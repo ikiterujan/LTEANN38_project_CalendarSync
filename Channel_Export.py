@@ -44,7 +44,7 @@ async def get_graph_access_token() -> str | None:
 async def channel_export(TEAM_ID: str, CHANNEL_ID: str, last_sync_time, client: httpx.AsyncClient, access_token: str = None):
     """채널 메시지를 가져오되, 마지막 동기화된 시점을 만나면 즉시 중단합니다."""
     if not access_token:
-        access_token = get_graph_access_token()
+        access_token = await get_graph_access_token()
         
     if not access_token:
         return []

@@ -431,7 +431,7 @@ async def async_single_user(user_id: str, now_utc: datetime):
         if not user:
             return 0
 
-        access_token = get_graph_access_token()
+        access_token = await get_graph_access_token()
         
         target_email = None
         target_user_name = None

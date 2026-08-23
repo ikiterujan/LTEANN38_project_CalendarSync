@@ -97,7 +97,7 @@ async def send_teams_message(http_client: httpx.AsyncClient, conversation_id: st
 # --- 3. 유저 1명 단위 비동기 처리 파이프라인 ---
 async def process_user_daily_notification(http_client: httpx.AsyncClient, user, bot_token: str):
     conv_id = getattr(user, 'conversation_id', None)
-    access_token = get_graph_access_token() # DB에 저장된 유저 토큰
+    access_token = await get_graph_access_token() # DB에 저장된 유저 토큰
     
     user_id = getattr(user, 'user_id', None)
 
