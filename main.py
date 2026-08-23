@@ -84,7 +84,7 @@ async def lifespan(app: FastAPI):
     global http_client
     # 커넥션 풀 크기를 제한하여 OOM 방어
     limits = httpx.Limits(max_keepalive_connections=20, max_connections=100)
-    timeout = httpx.Timeout(15.0, connect=5.0)
+    timeout = httpx.Timeout(20.0, connect=10.0)
     http_client = httpx.AsyncClient(limits=limits, timeout=timeout)
     
     scheduler.add_job(
@@ -760,7 +760,7 @@ async def auto_polling_sync_job():
         target_users = [
             user for idx, user in enumerate(all_users)
             #if idx == 14
-            if idx % POLLS_PER_HOUR == group_index
+            #if idx % POLLS_PER_HOUR == group_index
         ]
 
         tasks = [async_single_user(user.user_id, now_utc) for user in target_users]
