@@ -95,6 +95,7 @@ async def lifespan(app: FastAPI):
         'cron', 
         minute=SCHEDULER_CRON_MINUTES,
         misfire_grace_time=60,
+        max_instances=1,
         coalesce=True
     )
     scheduler.add_job(
