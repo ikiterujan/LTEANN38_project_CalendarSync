@@ -767,7 +767,7 @@ async def auto_polling_sync_job():
         target_users = [
             user for idx, user in enumerate(all_users)
             #if idx == 14
-            #if idx % POLLS_PER_HOUR == group_index
+            if idx % POLLS_PER_HOUR == group_index
         ]
 
         tasks = [async_single_user(user.user_id, now_utc) for user in target_users]
