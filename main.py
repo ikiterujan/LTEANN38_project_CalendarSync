@@ -88,7 +88,7 @@ async def lifespan(app: FastAPI):
     # 커넥션 풀 크기를 제한하여 OOM 방어
     limits = httpx.Limits(max_keepalive_connections=20, max_connections=100)
     timeout = httpx.Timeout(20.0, connect=10.0)
-    http_client = httpx.AsyncClient(limits=limits, timeout=timeout)
+    http_client = httpx.AsyncClient(limits=limits, timeout=timeout, http2=True)
     
     scheduler.add_job(
         auto_polling_sync_job, 
