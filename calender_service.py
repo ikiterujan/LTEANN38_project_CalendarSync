@@ -6,7 +6,9 @@ from dotenv import load_dotenv
 import msal
 import requests
 import logging
-
+from Channel_Export import get_graph_access_token
+from temp_http_client import safe_http_request
+import httpx
 load_dotenv()
 
 TENANT_ID = os.environ.get("TENANT_ID")
@@ -16,30 +18,6 @@ CLIENT_SECRET = os.environ.get("CLIENT_SECRET")
 TIME_ZONE = "Korea Standard Time"
 logger = logging.getLogger("ScheduleBot")
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
-
-def get_access_token():
-    if not TENANT_ID or not CLIENT_ID or not CLIENT_SECRET:
-        '''
-        logger.error(
-            "[.env 설정값 누락] TENANT_ID, CLIENT_ID, CLIENT_SECRET을"
-            " 확인하세요."
-        )
-        '''
-        return None
-
-    app = msal.ConfidentialClientApplication(
-        client_id=CLIENT_ID,
-        authority=f"https://login.microsoftonline.com/{TENANT_ID}",
-        client_credential=CLIENT_SECRET,
-    )
-    result = app.acquire_token_for_client(
-        scopes=["https://graph.microsoft.com/.default"]
-    )
-
-    token = result.get("access_token")
-    if not token:
-        logger.error(f"[토큰 발급 실패] {result.get('error_description')}",exc_info=True)
-    return token
 
 
 # 8일 이상 장기 일정 백엔드 분할 함수
@@ -253,7 +231,7 @@ def is_duplicate_event(new_event: dict, existing_events: list) -> bool:
 
     return False
 
-def get_existing_events_for_day(user_email: str, headers: dict, target_datetime_str: str) -> list:
+async def get_existing_events_for_day(user_email: str, headers: dict, target_datetime_str: str, http_client: httpx.AsyncClient) -> list:
     """
     등록하려는 날짜 당일의 기존 일정들을 API로 미리 끌어옵니다.
     """
@@ -266,18 +244,18 @@ def get_existing_events_for_day(user_email: str, headers: dict, target_datetime_
             f"https://graph.microsoft.com/v1.0/users/{user_email}/calendarView"
             f"?startDateTime={start_of_day}&endDateTime={end_of_day}"
         )
-        res = requests.get(url, headers=headers, timeout=5)
+        res = await safe_http_request(http_client, "GET", url, headers=headers, timeout=5)
         if res.status_code == 200:
             return res.json().get("value", [])
     except Exception as e:
         logger.error(f"[calendarView 조회 실패] {e}")
     return []
 
-def add_notice_to_calendar(user_email: str, notice_data: dict) -> bool:
+async def add_notice_to_calendar(user_email: str, notice_data: dict, http_client: httpx.AsyncClient) -> bool:
     """
     GPT AI에서 추출한 단일 notice 또는 schedules 포함 dict를 받아 장기 일정 분할 후 지정 유저의 MS 캘린더에 등록합니다.
     """
-    access_token = get_access_token()
+    access_token = get_graph_access_token()
     if access_token is None:
         '''
         logger.error("[Calendar] access_token 없음으로 등록 취소")
@@ -305,16 +283,16 @@ def add_notice_to_calendar(user_email: str, notice_data: dict) -> bool:
             continue
         # 1. 해당 날짜의 기존 일정 미리 끌어오기 (중복 검사용)
         start_datetime = event_body.get("start", {}).get("dateTime", "")
-        existing_events = get_existing_events_for_day(user_email, headers, start_datetime)
+        existing_events = await get_existing_events_for_day(user_email, headers, start_datetime, http_client=http_client)
 
-        # 2. 🔥 중복 검사 실행
+        # 2. 중복 검사 실행
         if is_duplicate_event(event_body, existing_events):
             logger.info(f"[Calendar 스킵 - 중복 일정 감지] {event_body.get('subject')}")
             continue  # 중복이면 생성 요청을 보내지 않고 다음으로 건너뜁니다.
         
         url = f"https://graph.microsoft.com/v1.0/users/{user_email}/events"
 
-        response = requests.post(url, headers=headers, json=event_body)
+        response = await safe_http_request(http_client, "POST", url, headers=headers, json=event_body)
 
         if response.status_code in (200, 201):
             '''

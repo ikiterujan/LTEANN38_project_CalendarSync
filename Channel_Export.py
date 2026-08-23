@@ -15,26 +15,30 @@ CLIENT_SECRET = os.getenv('CLIENT_SECRET')
 '''
 logger = logging.getLogger("ScheduleBot")
 '''
-def get_graph_access_token():
-    """MS Graph API 전용 App Access Token을 발급합니다."""
-    authority_url = f"https://login.microsoftonline.com/{TENANT_ID}"
+
+async def get_graph_access_token() -> str | None:
+    if not TENANT_ID or not CLIENT_ID or not CLIENT_SECRET:
+        return None
 
     app = msal.ConfidentialClientApplication(
         client_id=CLIENT_ID,
-        authority=authority_url,
-        client_credential=CLIENT_SECRET
+        authority=f"https://login.microsoftonline.com/{TENANT_ID}",
+        client_credential=CLIENT_SECRET,
+    )
+    
+    # msal의 동기 네트워크 요청을 별도 스레드로 격리하여 이벤트 루프 마비 방지
+    import asyncio
+    result = await asyncio.to_thread(
+        app.acquire_token_for_client,
+        scopes=["https://graph.microsoft.com/.default"]
     )
 
-    scopes = ["https://graph.microsoft.com/.default"]
-    token_result = app.acquire_token_for_client(scopes=scopes)
-
-    if "access_token" not in token_result:
+    token = result.get("access_token")
+    if not token:
         '''
-        logger.error(f"❌ [Token Error] 토큰 발급 실패: {token_result.get('error_description')}")
+        logger.error(f"[토큰 발급 실패] {result.get('error_description')}", exc_info=True)
         '''
-        return None
-
-    return token_result["access_token"]
+    return token
 
 
 async def channel_export(TEAM_ID: str, CHANNEL_ID: str, last_sync_time, client: httpx.AsyncClient, access_token: str = None):
@@ -54,7 +58,7 @@ async def channel_export(TEAM_ID: str, CHANNEL_ID: str, last_sync_time, client: 
     
     while url and not stop:
         try:
-            response = safe_http_request(
+            response = await safe_http_request(
                 client,
                 "GET",
                 url, 
