@@ -575,7 +575,7 @@ async def async_single_user(user_id: str, now_utc: datetime):
                     '''
 
                     try:
-                        await add_notice_to_calendar(target_email, schedule_dict)
+                        await add_notice_to_calendar(target_email, schedule_dict, http_client=http_client)
                         channel_written += 1
                         '''
                         logger.info(f"[{idx+1}번 메시지 성공] 캘린더 등록 완료")
