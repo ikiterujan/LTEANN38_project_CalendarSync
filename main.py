@@ -214,7 +214,6 @@ async def get_user_channels_from_graph(user_id: str, access_token: str):
             
             channels_url = f"https://graph.microsoft.com/v1.0/teams/{team_id}/channels"
             async with graph_semaphore:
-                await asyncio.sleep(0.1)
                 ch_res = await safe_http_request(http_client, "GET", channels_url, headers=headers)
 
             if ch_res.status_code == 200:
@@ -490,7 +489,6 @@ async def async_single_user(user_id: str, now_utc: datetime):
                         metadata = msg.get("metadata", {})
                         extracted_url = metadata.get("webUrl") or msg.get("webUrl")
                         result.web_url = extracted_url
-                        await asyncio.sleep(1.5)
                         return result
             except Exception as e:
                 logger.error(f"메시지 분석 최종 실패 (ID: {msg.get('id')}): {e}",exc_info=True)
@@ -502,7 +500,6 @@ async def async_single_user(user_id: str, now_utc: datetime):
             
             # 동기 함수를 안전하게 비동기 스레드로 실행하여 이벤트 루프 차단 방지
             async with graph_semaphore:
-                await asyncio.sleep(0.1)
                 raw_messages = await channel_export(ch["team_id"], ch["channel_id"], last_sync_time, http_client, access_token)
             if not raw_messages:
                 return 0
@@ -578,7 +575,7 @@ async def async_single_user(user_id: str, now_utc: datetime):
                     '''
 
                     try:
-                        add_notice_to_calendar(target_email, schedule_dict)
+                        await add_notice_to_calendar(target_email, schedule_dict)
                         channel_written += 1
                         '''
                         logger.info(f"[{idx+1}번 메시지 성공] 캘린더 등록 완료")

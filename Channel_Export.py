@@ -5,6 +5,7 @@ import httpx
 from dotenv import load_dotenv
 import logging
 from datetime import datetime
+from temp_http_client import safe_http_request
 
 load_dotenv()
 
@@ -53,7 +54,9 @@ async def channel_export(TEAM_ID: str, CHANNEL_ID: str, last_sync_time, client: 
     
     while url and not stop:
         try:
-            response = await client.get(
+            response = safe_http_request(
+                client,
+                "GET",
                 url, 
                 headers={"Authorization": f"Bearer {access_token}"}
             )
