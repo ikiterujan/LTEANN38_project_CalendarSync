@@ -62,6 +62,9 @@ GRADE_OVERRIDES = json.loads(GRADE_OVERRIDES_ENV)
 
 database.Base.metadata.create_all(bind=engine)
 
+graph_semaphore = asyncio.Semaphore(3)
+gpt_semaphore = asyncio.Semaphore(3)
+
 RECENT_SYNC_REQUESTS = TTLCache(
     maxsize=100, 
     ttl=DUPLICATE_WEBHOOK_DEBOUNCE_SECONDS
@@ -209,7 +212,9 @@ async def get_user_channels_from_graph(user_id: str, access_token: str):
             team_name = team.get("displayName", "알 수 없는 팀")
             
             channels_url = f"https://graph.microsoft.com/v1.0/teams/{team_id}/channels"
-            ch_res = await safe_http_request(http_client, "GET", channels_url, headers=headers)
+            async with graph_semaphore:
+                await asyncio.sleep(0.1)
+                ch_res = await safe_http_request(http_client, "GET", channels_url, headers=headers)
 
             if ch_res.status_code == 200:
                 channels = ch_res.json().get("value", [])
@@ -467,11 +472,10 @@ async def async_single_user(user_id: str, now_utc: datetime):
         else:
             last_sync_time = now_utc - timedelta(days=INITIAL_SYNC_LOOKBACK_DAYS)
 
+        
         user_channels = await get_user_channels_from_graph(user.user_id, access_token)
         if not user_channels:
             return 0
-
-        gpt_semaphore = asyncio.Semaphore(3)
             
         async def analyze_single_message(msg):
             try:
@@ -496,7 +500,9 @@ async def async_single_user(user_id: str, now_utc: datetime):
             channel_written = 0
             
             # 동기 함수를 안전하게 비동기 스레드로 실행하여 이벤트 루프 차단 방지
-            raw_messages = await channel_export(ch["team_id"], ch["channel_id"], last_sync_time, http_client, access_token)
+            async with graph_semaphore:
+                await asyncio.sleep(0.1)
+                raw_messages = await channel_export(ch["team_id"], ch["channel_id"], last_sync_time, http_client, access_token)
             if not raw_messages:
                 return 0
 
