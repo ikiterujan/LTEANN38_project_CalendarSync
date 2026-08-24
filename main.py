@@ -30,11 +30,16 @@ from reset import resetdb
 from cachetools import TTLCache
 from temp_http_client import safe_http_request
 from send_anouncement import run_daily_schedule_job
-
+import psutil
 
 # [LOGGER & ANONYMIZATION]
 logger = logging.getLogger("ScheduleBot")
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
+
+def log_memory(stage: str):
+    process = psutil.Process(os.getpid())
+    mem_mb = process.memory_info().rss / 1024 / 1024
+    logger.info(f"RAM [{stage}]: {mem_mb:.2f} MB")
 
 def get_anonymous_id(identity_string: Optional[str]) -> str:
     """실명, 유저 ID, 이메일 등을 SHA-256 해시 기반 8자리 익명 ID로 변환 (로그 개인정보 보호)"""
@@ -209,6 +214,7 @@ async def get_user_channels_from_graph(user_id: str, access_token: str):
         teams = teams_res.json().get("value", [])
 
         for team in teams:
+            log_memory("채널조회중")
             team_id = team.get("id")
             team_name = team.get("displayName", "알 수 없는 팀")
             
@@ -477,6 +483,7 @@ async def async_single_user(user_id: str, now_utc: datetime, access_token: str =
             
         async def analyze_single_message(msg):
             try:
+                log_memory("gpt에 돌리기")
                 async with gpt_semaphore:
                     result = await analyze_message_with_gpt(
                         message_payload=msg,
@@ -573,6 +580,7 @@ async def async_single_user(user_id: str, now_utc: datetime, access_token: str =
                     '''
 
                     try:
+                        log_memory("캘린더추가")
                         await add_notice_to_calendar(target_email, schedule_dict, http_client=http_client)
                         channel_written += 1
                         '''
@@ -751,6 +759,7 @@ async def teams_event_webhook(
 
 async def auto_polling_sync_job():
     db = SessionLocal()
+    log_memory("폴링시작")
     try:
         now_utc = datetime.now(timezone.utc)
         logger.info(f"백그라운드 폴링 스케줄러 실행 시각: {now_utc.strftime('%H:%M:%S UTC')}")
