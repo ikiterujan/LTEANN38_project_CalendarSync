@@ -633,7 +633,7 @@ async def async_single_user(user_id: str, now_utc: datetime, access_token: str =
         profile_res = None
         db.close()
         await http_client.aclose()
-        #engine.dispose()
+        engine.dispose()
         gc.collect()
 
 def sync_single_user(user_id: str, now_utc: datetime, access_token: str):
