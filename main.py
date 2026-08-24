@@ -113,7 +113,7 @@ async def lifespan(app: FastAPI):
     )
     scheduler.add_job(
         run_daily_schedule_job,
-        trigger=CronTrigger(hour=7, minute=5, timezone="Asia/Seoul"), # 원하는 시/분 설정
+        trigger=CronTrigger(hour=10, minute=5, timezone="Asia/Seoul"), # 원하는 시/분 설정
         args=[http_client],
         id="daily_calendar_notification",
         replace_existing=True
