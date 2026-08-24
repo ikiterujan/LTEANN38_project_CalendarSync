@@ -85,16 +85,12 @@ scheduler = AsyncIOScheduler(job_defaults=job_defaults)
 
 #FastAPI app
 
+limits = httpx.Limits(max_keepalive_connections=20, max_connections=100)
+timeout = httpx.Timeout(20.0, connect=10.0)
 http_client: httpx.AsyncClient = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global http_client
-    # 커넥션 풀 크기를 제한하여 OOM 방어
-    limits = httpx.Limits(max_keepalive_connections=20, max_connections=100)
-    timeout = httpx.Timeout(20.0, connect=10.0)
-    http_client = httpx.AsyncClient(limits=limits, timeout=timeout, http2=True)
-    
     scheduler.add_job(
         auto_polling_sync_job, 
         'cron', 
@@ -114,7 +110,6 @@ async def lifespan(app: FastAPI):
     scheduler.add_job(
         run_daily_schedule_job,
         trigger=CronTrigger(hour=7, minute=5, timezone="Asia/Seoul"), # 원하는 시/분 설정
-        args=[http_client],
         id="daily_calendar_notification",
         replace_existing=True
     )
@@ -123,7 +118,6 @@ async def lifespan(app: FastAPI):
     yield  # 서버가 정상 구동되는 시점
 
     scheduler.shutdown()
-    await http_client.aclose()
 
 
 
@@ -200,7 +194,7 @@ class ExtractedSchedule(BaseModel):
     web_url: Optional[str] = None
 
 # [Graph API Helper]
-async def get_user_channels_from_graph(user_id: str, access_token: str):
+async def get_user_channels_from_graph(user_id: str, access_token: str, http_client: httpx.AsyncClient):
     headers = {"Authorization": f"Bearer {access_token}"}
     discovered_channels = []
 
@@ -268,7 +262,8 @@ async def send_teams_reply(service_url: str, conversation_id: str, text: str):
 
     # 3. 메시지 발송
     try:
-        res = await safe_http_request(http_client, "POST", reply_url, headers=headers, json=payload)
+        async with httpx.AsyncClient(limits=limits, timeout=timeout, http2=True) as http_client:
+            res = await http_client.post(reply_url, headers=headers, json=payload)
         if res.status_code not in (200, 201, 202):
             logger.error(f"[Teams 메시지 발송 실패] Status: {res.status_code}, Body: {res.text}")
     except Exception as e:
@@ -278,7 +273,8 @@ async def send_teams_reply(service_url: str, conversation_id: str, text: str):
 async def analyze_message_with_gpt(
     message_payload: dict, 
     graph_access_token: str = None, 
-    target_user_name: str = None
+    target_user_name: str = None,
+    http_client: httpx.AsyncClient = None
 ) -> ExtractedSchedule:
     body_info = message_payload.get("body", {})
     raw_content = body_info.get("content", "")
@@ -424,7 +420,7 @@ async def analyze_message_with_gpt(
     return completion.choices[0].message.parsed
 
 # 유저 동기화 & 학년 동적 필터링 적용
-async def async_single_user(user_id: str, now_utc: datetime, access_token: str =None):
+async def async_single_user(user_id: str, now_utc: datetime, access_token: str =None, http_client: httpx.AsyncClient = None):
     db = SessionLocal()
     anon_user_id = get_anonymous_id(user_id)
     
@@ -433,6 +429,9 @@ async def async_single_user(user_id: str, now_utc: datetime, access_token: str =
     results = None
     profile_res = None
     
+    if not http_client:
+        http_client = httpx.AsyncClient(limits=limits, timeout=timeout)
+        
     try:
         user = db.query(models.User).filter(models.User.user_id == user_id).first()
         if not user:
@@ -489,7 +488,8 @@ async def async_single_user(user_id: str, now_utc: datetime, access_token: str =
                     result = await analyze_message_with_gpt(
                         message_payload=msg,
                         graph_access_token=access_token,
-                        target_user_name=target_user_name
+                        target_user_name=target_user_name,
+                        http_client=http_client
                     ) 
                     if result:
                         metadata = msg.get("metadata", {})
@@ -631,8 +631,9 @@ async def async_single_user(user_id: str, now_utc: datetime, access_token: str =
         results = None
         profile_res = None
         db.close()
+        await http_client.aclose()
 
-def sync_single_user(user_id: str, now_utc: datetime, access_token):
+def sync_single_user(user_id: str, now_utc: datetime, access_token: str):
     try:
         asyncio.run(async_single_user(user_id, now_utc, access_token=access_token))
     except Exception as e:
@@ -687,7 +688,7 @@ async def teams_event_webhook(
     sync_state = db.query(models.UserSyncState).filter(models.UserSyncState.user_id == anon_user_id).first()
     initial_sync_time = now_utc - timedelta(days=INITIAL_SYNC_LOOKBACK_DAYS)
     
-    
+        
     # 1. 봇 설치 / 대화 시작 이벤트 (installationUpdate / conversationUpdate)
     if (activity_type == "installationUpdate" and data.get("action") == "add") or (activity_type == "conversationUpdate" and data.get("membersAdded")):
         if user_id:
@@ -719,6 +720,7 @@ async def teams_event_webhook(
                 "CalendarSync는 백그라운드에서 공지사항 및 포스터를 분석하여 "
                 "캘린더로 자동 동기화해 드립니다. 별도의 명령어를 입력하지 않으셔도 안전하게 작동합니다."
             )
+            
             background_tasks.add_task(send_teams_reply, service_url, user_conversation_id, welcome_text)
 
             access_token = await get_graph_access_token()
@@ -761,6 +763,7 @@ async def teams_event_webhook(
 async def auto_polling_sync_job():
     db = SessionLocal()
     log_memory("폴링시작")
+    polling_http_client = None
     try:
         now_utc = datetime.now(timezone.utc)
         logger.info(f"백그라운드 폴링 스케줄러 실행 시각: {now_utc.strftime('%H:%M:%S UTC')}")
@@ -776,13 +779,18 @@ async def auto_polling_sync_job():
             if idx % POLLS_PER_HOUR == group_index
         ]
 
+        polling_http_client = httpx.AsyncClient(limits=limits, timeout=timeout, http2=True)
         access_token = await get_graph_access_token()
         
-        tasks = [async_single_user(user.user_id, now_utc, access_token=access_token) for user in target_users]
+        tasks = [async_single_user(user.user_id, now_utc, access_token=access_token, http_client=polling_http_client) for user in target_users]
         await asyncio.gather(*tasks, return_exceptions=True)
 
     finally:
         log_memory("폴링완료")
+        
+        if polling_http_client and not polling_http_client.is_closed:
+            await polling_http_client.aclose()
+        
         # 1. DB 세션 닫기
         db.close()
         

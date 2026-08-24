@@ -119,26 +119,29 @@ async def process_user_daily_notification(http_client: httpx.AsyncClient, user, 
 
 
 # --- 4. 메인 스케줄러 바인딩용 함수 ---
-async def run_daily_schedule_job(global_http_client: httpx.AsyncClient):
+async def run_daily_schedule_job():
     """매일 정시에 실행될 작업 메인 진입점"""
     logger.info("[Daily Scheduler] 오늘 일정 알림 발송 작업을 시작합니다.")
     
     db = SessionLocal()
+    limits = httpx.Limits(max_keepalive_connections=20, max_connections=100)
+    timeout = httpx.Timeout(20.0, connect=10.0)
     try:
-        all_users = db.query(models.User).all() if hasattr(models, 'User') else []
-        bot_token = await get_bot_token(global_http_client)
-        
-        if not bot_token:
-            logger.error("Bot 토큰 발급 실패로 알림 발송 중단",exc_info=True)
-            return
+        async with httpx.AsyncClient(limits=limits,timeout=timeout,http2=True) as global_http_client:
+            all_users = db.query(models.User).all() if hasattr(models, 'User') else []
+            bot_token = await get_bot_token(global_http_client)
+            
+            if not bot_token:
+                logger.error("Bot 토큰 발급 실패로 알림 발송 중단",exc_info=True)
+                return
 
-        # asyncio.gather로 전체 유저 병렬(Parallel) 처리
-        tasks = [
-            process_user_daily_notification(global_http_client, user, bot_token)
-            for user in all_users
-        ]
-        await asyncio.gather(*tasks)
-        logger.info(f"총 {len(all_users)}명 유저 대상 일일 알림 발송")
-        
+            # asyncio.gather로 전체 유저 병렬(Parallel) 처리
+            tasks = [
+                process_user_daily_notification(global_http_client, user, bot_token)
+                for user in all_users
+            ]
+            await asyncio.gather(*tasks)
+            logger.info(f"총 {len(all_users)}명 유저 대상 일일 알림 발송")
+            
     finally:
         db.close()
