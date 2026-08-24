@@ -477,7 +477,7 @@ async def async_single_user(user_id: str, now_utc: datetime, access_token: str =
             last_sync_time = now_utc - timedelta(days=INITIAL_SYNC_LOOKBACK_DAYS)
 
         
-        user_channels = await get_user_channels_from_graph(user.user_id, access_token)
+        user_channels = await get_user_channels_from_graph(user.user_id, access_token, http_client)
         if not user_channels:
             return 0
             
