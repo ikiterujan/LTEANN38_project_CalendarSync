@@ -31,6 +31,7 @@ from cachetools import TTLCache
 from temp_http_client import safe_http_request
 from send_anouncement import run_daily_schedule_job
 import psutil
+import gc
 
 # [LOGGER & ANONYMIZATION]
 logger = logging.getLogger("ScheduleBot")
@@ -632,6 +633,8 @@ async def async_single_user(user_id: str, now_utc: datetime, access_token: str =
         profile_res = None
         db.close()
         await http_client.aclose()
+        #engine.dispose()
+        gc.collect()
 
 def sync_single_user(user_id: str, now_utc: datetime, access_token: str):
     try:
