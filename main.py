@@ -417,7 +417,7 @@ async def analyze_message_with_gpt(
     return completion.choices[0].message.parsed
 
 # 유저 동기화 & 학년 동적 필터링 적용
-async def async_single_user(user_id: str, now_utc: datetime):
+async def async_single_user(user_id: str, now_utc: datetime, access_token: str =None):
     db = SessionLocal()
     anon_user_id = get_anonymous_id(user_id)
     
@@ -430,8 +430,6 @@ async def async_single_user(user_id: str, now_utc: datetime):
         user = db.query(models.User).filter(models.User.user_id == user_id).first()
         if not user:
             return 0
-
-        access_token = await get_graph_access_token()
         
         target_email = None
         target_user_name = None
@@ -625,9 +623,9 @@ async def async_single_user(user_id: str, now_utc: datetime):
         profile_res = None
         db.close()
 
-def sync_single_user(user_id: str, now_utc: datetime):
+def sync_single_user(user_id: str, now_utc: datetime, access_token):
     try:
-        asyncio.run(async_single_user(user_id, now_utc))
+        asyncio.run(async_single_user(user_id, now_utc, access_token=access_token))
     except Exception as e:
         logger.error(f"Sync failed for user {user_id}: {e}",extra=True)
     
@@ -714,8 +712,9 @@ async def teams_event_webhook(
             )
             background_tasks.add_task(send_teams_reply, service_url, user_conversation_id, welcome_text)
 
+            access_token = await get_graph_access_token()
             # 백그라운드 동기화 수행
-            background_tasks.add_task(sync_single_user, user_id, now_utc)
+            background_tasks.add_task(sync_single_user, user_id, now_utc, access_token)
 
     # 2. 일반 텍스트 메시지 수신 (MS 검증 도구의 "Hi" 명령어 응답용)
     elif activity_type == "message":
@@ -767,7 +766,9 @@ async def auto_polling_sync_job():
             if idx % POLLS_PER_HOUR == group_index
         ]
 
-        tasks = [async_single_user(user.user_id, now_utc) for user in target_users]
+        access_token = await get_graph_access_token()
+        
+        tasks = [async_single_user(user.user_id, now_utc, access_token=access_token) for user in target_users]
         await asyncio.gather(*tasks, return_exceptions=True)
 
     finally:

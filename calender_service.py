@@ -251,11 +251,12 @@ async def get_existing_events_for_day(user_email: str, headers: dict, target_dat
         logger.error(f"[calendarView 조회 실패] {e}")
     return []
 
-async def add_notice_to_calendar(user_email: str, notice_data: dict, http_client: httpx.AsyncClient) -> bool:
+async def add_notice_to_calendar(user_email: str, notice_data: dict, http_client: httpx.AsyncClient, access_token: str=None) -> bool:
     """
     GPT AI에서 추출한 단일 notice 또는 schedules 포함 dict를 받아 장기 일정 분할 후 지정 유저의 MS 캘린더에 등록합니다.
     """
-    access_token = await get_graph_access_token()
+    if not access_token:
+        access_token = await get_graph_access_token()
     if access_token is None:
         '''
         logger.error("[Calendar] access_token 없음으로 등록 취소")
