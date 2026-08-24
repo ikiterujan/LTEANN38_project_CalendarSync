@@ -332,6 +332,7 @@ async def analyze_message_with_gpt(
     if attachment_texts:
         clean_body = "\n".join(attachment_texts) + "\n" + clean_body
     
+    clean_body = clean_body or ""
     clean_body = clean_body[:2000]
         
     from_info = message_payload.get("from") or {}
@@ -771,8 +772,8 @@ async def auto_polling_sync_job():
         group_index = (now_utc.minute // POLLING_INTERVAL_MINUTES) % POLLS_PER_HOUR
         target_users = [
             user for idx, user in enumerate(all_users)
-            if (idx == 10 or idx==11)
-            #if idx % POLLS_PER_HOUR == group_index
+            #if (idx == 10 or idx==11)
+            if idx % POLLS_PER_HOUR == group_index
         ]
 
         access_token = await get_graph_access_token()
@@ -781,6 +782,7 @@ async def auto_polling_sync_job():
         await asyncio.gather(*tasks, return_exceptions=True)
 
     finally:
+        log_memory("폴링완료")
         # 1. DB 세션 닫기
         db.close()
         
@@ -790,6 +792,7 @@ async def auto_polling_sync_job():
         results = None
 
         logger.info("[Polling Cleanup] 백그라운드 메모리 정리 완료")
+        log_memory("정리완료")
 
 # 6개월 이상 휴면 계정 자동 파기 (개인정보보호법 준수)
 async def cleanup_inactive_users_job():
