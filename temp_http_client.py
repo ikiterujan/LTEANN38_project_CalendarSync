@@ -35,7 +35,7 @@ async def safe_http_request(
             logger.warning(f"임시 HTTP 클라이언트로 전환: {e}",exc_info=True)
 
     limits = httpx.Limits(max_keepalive_connections=5, max_connections=20)
-    timeout = httpx.Timeout(20.0, connect=10.0)
+    timeout = httpx.Timeout(20.0, connect=15.0)
     
     async with httpx.AsyncClient(limits=limits, timeout=timeout) as temp_client:
         

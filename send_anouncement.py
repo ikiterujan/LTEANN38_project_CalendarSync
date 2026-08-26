@@ -51,7 +51,7 @@ async def fetch_today_events(http_client: httpx.AsyncClient, user_id: str, acces
     anon_user_id = get_anonymous_id(user_id)
     
     try:
-        res = await safe_http_request(http_client, "GET", url, headers=headers)
+        res = await http_client.post(url, headers=headers)
         if res and res.status_code == 200:
             events = res.json().get("value", [])
             
@@ -89,7 +89,7 @@ async def send_teams_message(http_client: httpx.AsyncClient, conversation_id: st
     payload = {"type": "message", "text": message_text}
 
     try:
-        await safe_http_request(http_client, "POST", endpoint, json=payload, headers=headers)
+        await http_client.post(endpoint, json=payload, headers=headers)
     except Exception as e:
         logger.error(f"Teams 알림 발송 실패: {e}",exc_info=True)
 
