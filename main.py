@@ -57,7 +57,8 @@ if os.environ.get("RESET_DB", "false").lower() == "true":
 load_dotenv()
 # [HYPERPARAMETERS & CONFIGURATION]
 POLLS_PER_HOUR = int(os.getenv("POLLS_PER_HOUR", "6"))
-POLLING_INTERVAL_MINUTES = 60 // POLLS_PER_HOUR
+GENERAL_POLLING_INTERVAL = os.getenv("GENERAL_POLLING_INTERVAL", "2")
+POLLING_INTERVAL_MINUTES = GENERAL_POLLING_INTERVAL*60 // POLLS_PER_HOUR
 SCHEDULER_CRON_MINUTES = ",".join(str(i) for i in range(0, 60, POLLING_INTERVAL_MINUTES))
 
 INITIAL_SYNC_LOOKBACK_DAYS = int(os.getenv("INITIAL_SYNC_LOOKBACK_DAYS", "7"))
@@ -111,7 +112,7 @@ async def lifespan(app: FastAPI):
     )
     scheduler.add_job(
         run_daily_schedule_job,
-        trigger=CronTrigger(hour=8, minute=55, timezone="Asia/Seoul"), # 원하는 시/분 설정
+        trigger=CronTrigger(hour=7, minute=5, timezone="Asia/Seoul"), # 원하는 시/분 설정
         id="daily_calendar_notification",
         replace_existing=True
     )
@@ -264,7 +265,7 @@ async def send_teams_reply(service_url: str, conversation_id: str, text: str):
 
     # 3. 메시지 발송
     try:
-        async with httpx.AsyncClient(limits=limits, timeout=timeout, http2=True) as http_client:
+        async with httpx.AsyncClient(limits=limits, timeout=timeout) as http_client:
             res = await http_client.post(reply_url, headers=headers, json=payload)
         if res.status_code not in (200, 201, 202):
             logger.error(f"[Teams 메시지 발송 실패] Status: {res.status_code}, Body: {res.text}")
@@ -795,7 +796,7 @@ async def auto_polling_sync_job():
             if idx % POLLS_PER_HOUR == group_index
         ]
 
-        polling_http_client = httpx.AsyncClient(limits=limits, timeout=timeout, http2=True)
+        polling_http_client = httpx.AsyncClient(limits=limits, timeout=timeout)
         access_token = await get_graph_access_token()
         
         tasks = [async_single_user(user.user_id, now_utc, access_token=access_token, http_client=polling_http_client) for user in target_users]

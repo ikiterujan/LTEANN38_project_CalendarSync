@@ -127,7 +127,7 @@ async def run_daily_schedule_job():
     limits = httpx.Limits(max_keepalive_connections=20, max_connections=100)
     timeout = httpx.Timeout(20.0, connect=10.0)
     try:
-        async with httpx.AsyncClient(limits=limits,timeout=timeout,http2=True) as global_http_client:
+        async with httpx.AsyncClient(limits=limits,timeout=timeout) as global_http_client:
             all_users = db.query(models.User).all() if hasattr(models, 'User') else []
             bot_token = await get_bot_token(global_http_client)
             
