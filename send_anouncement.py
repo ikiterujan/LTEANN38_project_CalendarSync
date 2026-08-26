@@ -51,7 +51,7 @@ async def fetch_today_events(http_client: httpx.AsyncClient, user_id: str, acces
     anon_user_id = get_anonymous_id(user_id)
     
     try:
-        res = await http_client.post(url, headers=headers)
+        res = await http_client.get(url, headers=headers)
         if res and res.status_code == 200:
             events = res.json().get("value", [])
             
