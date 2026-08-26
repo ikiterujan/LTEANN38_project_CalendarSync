@@ -91,7 +91,7 @@ async def send_teams_message(http_client: httpx.AsyncClient, conversation_id: st
     try:
         await safe_http_request(http_client, "POST", endpoint, json=payload, headers=headers)
     except Exception as e:
-        logger.error(f"Teams 알림 발송 실패: {e}")
+        logger.error(f"Teams 알림 발송 실패: {e}",exc_info=True)
 
 
 # --- 3. 유저 1명 단위 비동기 처리 파이프라인 ---
