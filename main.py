@@ -20,6 +20,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from bs4 import BeautifulSoup
 from openai import AsyncOpenAI
+import tracemalloc
 
 import database
 import models
@@ -430,6 +431,8 @@ async def async_single_user(user_id: str, now_utc: datetime, access_token: str =
     results = None
     profile_res = None
     
+    tracemalloc.start()
+    
     if not http_client:
         http_client = httpx.AsyncClient(limits=limits, timeout=timeout)
         
@@ -620,7 +623,17 @@ async def async_single_user(user_id: str, now_utc: datetime, access_token: str =
         db.refresh(log_entry)
         db.refresh(sync_state)
         logger.info(f"[Sync 완료] User({anon_user_id}): 총 {written_count}건 등록 | Log DB ID: {log_entry.id}")
+        
+        snapshot = tracemalloc.take_snapshot()
+        top_stats = snapshot.statistics('lineno')
+        
+        logger.info("[Memory Trace TOP 3]")
+        for stat in top_stats[:3]:
+            logger.info(stat)
+            
         return written_count
+    
+    
 
     except Exception as e:
         db.rollback()
