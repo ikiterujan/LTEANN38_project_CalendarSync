@@ -56,9 +56,11 @@ if os.environ.get("RESET_DB", "false").lower() == "true":
 
 load_dotenv()
 # [HYPERPARAMETERS & CONFIGURATION]
-POLLS_PER_HOUR = int(os.getenv("POLLS_PER_HOUR", "6"))
-GENERAL_POLLING_INTERVAL = float(os.getenv("GENERAL_POLLING_INTERVAL", "2"))
-POLLING_INTERVAL_MINUTES = int(GENERAL_POLLING_INTERVAL*60) // POLLS_PER_HOUR
+POLLS_PER_HOUR = int(os.getenv("POLLS_PER_HOUR", "2"))
+GENERAL_POLLING_INTERVAL = float(os.getenv("GENERAL_POLLING_INTERVAL", "3"))
+TOTAL_GROUPS = int(GENERAL_POLLING_INTERVAL * POLLS_PER_HOUR)
+
+POLLING_INTERVAL_MINUTES = int(GENERAL_POLLING_INTERVAL*60) // TOTAL_GROUPS
 SCHEDULER_CRON_MINUTES = ",".join(str(i) for i in range(0, 60, POLLING_INTERVAL_MINUTES))
 
 INITIAL_SYNC_LOOKBACK_DAYS = int(os.getenv("INITIAL_SYNC_LOOKBACK_DAYS", "7"))
@@ -98,7 +100,7 @@ async def lifespan(app: FastAPI):
         auto_polling_sync_job, 
         'cron', 
         minute=SCHEDULER_CRON_MINUTES,
-        misfire_grace_time=60,
+        misfire_grace_time=300,
         max_instances=1,
         coalesce=True
     )
@@ -788,13 +790,18 @@ async def auto_polling_sync_job():
         if not all_users:
             return
 
+        
+        total_minutes = now_utc.hour * 60 + now_utc.minute
+        slot_index = total_minutes // POLLING_INTERVAL_MINUTES # 30분 단위 슬롯 번호
+        group_index = slot_index % TOTAL_GROUPS                 # 6으로 나눈 나머지 (0, 1, 2, 3, 4, 5)
+
         #group_index = 0
-        group_index = (now_utc.minute // POLLING_INTERVAL_MINUTES) % POLLS_PER_HOUR
         target_users = [
             user for idx, user in enumerate(all_users)
             #if (idx == 10 or idx==11)
-            if idx % POLLS_PER_HOUR == group_index
+            if idx % TOTAL_GROUPS == group_index # 6개 그룹으로 유저 분할
         ]
+        
 
         polling_http_client = httpx.AsyncClient(limits=limits, timeout=timeout)
         access_token = await get_graph_access_token()

@@ -248,7 +248,7 @@ async def get_existing_events_for_day(user_email: str, headers: dict, target_dat
         if res.status_code == 200:
             return res.json().get("value", [])
     except Exception as e:
-        logger.error(f"[calendarView 조회 실패] {e}")
+        logger.error(f"[calendarView 조회 실패] {e}",exc_info=True)
     return []
 
 async def add_notice_to_calendar(user_email: str, notice_data: dict, http_client: httpx.AsyncClient, access_token: str=None) -> bool:
