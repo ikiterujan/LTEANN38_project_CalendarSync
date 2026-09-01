@@ -1,16 +1,22 @@
-from fastapi import FastAPI
+# main.py
+import os
 from contextlib import asynccontextmanager
+from fastapi import FastAPI
 from app.tasks.scheduler import scheduler, start_scheduler
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # 앱 시작 시 스케줄러 실행
-    start_scheduler()
+    # Gunicorn/Uvicorn Multi-Worker 환경 중복 실행 방지 (기본 메인 워커에서만 구동)
+    # 별도 스케줄러 컨테이너/프로세스로 띄울 경우 인프라 레벨 분리 가능
+    if os.environ.get("RUN_SCHEDULER", "true").lower() == "true":
+        start_scheduler()
+    
     yield
-    # 앱 종료 시 스케줄러 안전 종료
-    scheduler.shutdown()
+    
+    if scheduler.running:
+        scheduler.shutdown()
 
-app = FastAPI(title="Teams-Outlook Sync Engine", lifespan=lifespan)
+app = FastAPI(lifespan=lifespan)
 
 @app.get("/health")
 def health_check():

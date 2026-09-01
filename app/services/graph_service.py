@@ -1,5 +1,5 @@
 import logging
-from typing import Optional
+from typing import Optional, Any, Dict
 from datetime import datetime
 import httpx
 
@@ -11,11 +11,13 @@ class GraphService:
         self,
         tenant_id: str,
         client_id: str,
-        client_secret: str
+        client_secret: str,
+        client: httpx.AsyncClient  # 전역 httpx.AsyncClient 주입
     ):
         self.tenant_id = tenant_id
         self.client_id = client_id
         self.client_secret = client_secret
+        self._client = client  # 전역 HTTP 클라이언트 재사용
         self._access_token: Optional[str] = None
 
     async def _get_access_token(self) -> str:
@@ -28,21 +30,41 @@ class GraphService:
             "scope": "https://graph.microsoft.com/.default"
         }
 
-        async with httpx.AsyncClient() as client:
-            res = await client.post(token_url, data=payload)
-            res.raise_for_status()
-            data = res.json()
-            return data["access_token"]
+        res = await self._client.post(token_url, data=payload)
+        res.raise_for_status()
+        data = res.json()
+        self._access_token = data["access_token"]
+        return self._access_token
 
     async def _get_headers(self) -> dict:
         """Graph API 요청 헤더 생성"""
         if not self._access_token:
-            self._access_token = await self._get_access_token()
+            await self._get_access_token()
         
         return {
             "Authorization": f"Bearer {self._access_token}",
             "Content-Type": "application/json"
         }
+
+    async def _request_with_retry(
+        self, 
+        method: str, 
+        url: str, 
+        json_payload: Optional[Dict[str, Any]] = None
+    ) -> httpx.Response:
+        """401 토큰 만료 자동 재시도를 포함한 공통 HTTP 요청 Wrapper"""
+        headers = await self._get_headers()
+        
+        res = await self._client.request(method, url, headers=headers, json=json_payload)
+        
+        # 401 Unauthorized 시 토큰 재발급 후 1회 재시도
+        if res.status_code == 401:
+            logger.info("[Graph API] 토큰 만료 감지, 재발급 후 재시도합니다.")
+            await self._get_access_token()
+            headers = await self._get_headers()
+            res = await self._client.request(method, url, headers=headers, json=json_payload)
+
+        return res
 
     # ------------------------------------------------------------------
     # MS Graph Calendar CRUD Operations
@@ -60,7 +82,6 @@ class GraphService:
     ) -> str:
         """[POST] 특정 사용자 개인 캘린더에 새 일정 생성 후 event_id 반환"""
         url = f"https://graph.microsoft.com/v1.0/users/{user_id}/calendar/events"
-        headers = await self._get_headers()
 
         payload = {
             "subject": title,
@@ -81,19 +102,11 @@ class GraphService:
             }
         }
 
-        async with httpx.AsyncClient() as client:
-            res = await client.post(url, headers=headers, json=payload)
-            
-            # 토큰 만료 401 재시도 로직
-            if res.status_code == 401:
-                self._access_token = await self._get_access_token()
-                headers = await self._get_headers()
-                res = await client.post(url, headers=headers, json=payload)
-
-            res.raise_for_status()
-            event_data = res.json()
-            logger.info(f"[Graph API] User {user_id} 캘린더 일정 생성 성공 (Event ID: {event_data['id']})")
-            return event_data["id"]
+        res = await self._request_with_retry("POST", url, json_payload=payload)
+        res.raise_for_status()
+        event_data = res.json()
+        logger.info(f"[Graph API] User {user_id} 캘린더 일정 생성 성공 (Event ID: {event_data['id']})")
+        return event_data["id"]
 
     async def update_user_calendar_event(
         self,
@@ -108,7 +121,6 @@ class GraphService:
     ):
         """[PATCH] 기존 사용자 캘린더 이벤트 핀포인트 수정"""
         url = f"https://graph.microsoft.com/v1.0/users/{user_id}/calendar/events/{event_id}"
-        headers = await self._get_headers()
 
         payload = {
             "subject": title,
@@ -129,16 +141,9 @@ class GraphService:
             }
         }
 
-        async with httpx.AsyncClient() as client:
-            res = await client.patch(url, headers=headers, json=payload)
-            
-            if res.status_code == 401:
-                self._access_token = await self._get_access_token()
-                headers = await self._get_headers()
-                res = await client.patch(url, headers=headers, json=payload)
-
-            res.raise_for_status()
-            logger.info(f"[Graph API] User {user_id} 캘린더 일정 수정 성공 (Event ID: {event_id})")
+        res = await self._request_with_retry("PATCH", url, json_payload=payload)
+        res.raise_for_status()
+        logger.info(f"[Graph API] User {user_id} 캘린더 일정 수정 성공 (Event ID: {event_id})")
 
     async def delete_user_calendar_event(
         self,
@@ -147,20 +152,31 @@ class GraphService:
     ):
         """[DELETE] 사용자 캘린더 이벤트 삭제"""
         url = f"https://graph.microsoft.com/v1.0/users/{user_id}/calendar/events/{event_id}"
-        headers = await self._get_headers()
 
-        async with httpx.AsyncClient() as client:
-            res = await client.delete(url, headers=headers)
-            
-            if res.status_code == 401:
-                self._access_token = await self._get_access_token()
-                headers = await self._get_headers()
-                res = await client.delete(url, headers=headers)
+        res = await self._request_with_retry("DELETE", url)
 
-            # 이미 삭제된 이벤트(404)인 경우는 정상 처리
-            if res.status_code == 404:
-                logger.warning(f"[Graph API] User {user_id} 삭제 대상 이벤트가 존재하지 않음 (Event ID: {event_id})")
-                return
+        if res.status_code == 404:
+            logger.warning(f"[Graph API] User {user_id} 삭제 대상 이벤트가 존재하지 않음 (Event ID: {event_id})")
+            return
 
-            res.raise_for_status()
-            logger.info(f"[Graph API] User {user_id} 캘린더 일정 삭제 성공 (Event ID: {event_id})")
+        res.raise_for_status()
+        logger.info(f"[Graph API] User {user_id} 캘린더 일정 삭제 성공 (Event ID: {event_id})")
+
+    async def send_teams_chat_message(self, user_id: str, message: str):
+        """[POST] 1:1 Teams 채팅 메시지 발송 (일정 알림용)"""
+        url = f"https://graph.microsoft.com/v1.0/users/{user_id}/chats"
+        payload = {
+            "chatType": "oneOnOne",
+            "members": [
+                {
+                    "@odata.type": "#microsoft.graph.aadUserConversationMember",
+                    "roles": ["owner"],
+                    "user@odata.bind": f"https://graph.microsoft.com/v1.0/users('{user_id}')"
+                }
+            ]
+        }
+        res = await self._request_with_retry("POST", url, json_payload=payload)
+        if res.status_code in (200, 201):
+            chat_id = res.json()["id"]
+            msg_url = f"https://graph.microsoft.com/v1.0/chats/{chat_id}/messages"
+            await self._request_with_retry("POST", msg_url, json_payload={"body": {"content": message}})

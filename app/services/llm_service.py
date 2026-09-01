@@ -7,6 +7,7 @@ from openai import AsyncOpenAI
 from app.models.master_calendar import MasterCalendar
 from app.schemas.master_calendar import MasterScheduleContext
 from app.schemas.llm_schema import RAGAnalysisResult
+from app.core.security import decrypt_text  # 복호화 함수 추가
 
 logger = logging.getLogger(__name__)
 
@@ -18,26 +19,37 @@ class LLMService:
     def _get_existing_schedules_context(
         self, db: Session, channel_id: str
     ) -> List[dict]:
-        """[RAG Retrieval] 해당 채널의 기존 마스터 일정들을 DB에서 꺼내어 Context용 JSON 리스트로 변환"""
+        """[RAG Retrieval] ORM 메모리 최적화 + 복호화를 거쳐 Context용 JSON 리스트 생성"""
+        
+        # ORM 객체 매핑 대신 튜플 단위 핀포인트 조회 (메모리 Stash 방지)
         schedules = (
-            db.query(MasterCalendar)
+            db.query(
+                MasterCalendar.id,
+                MasterCalendar._title,
+                MasterCalendar.start_datetime,
+                MasterCalendar.end_datetime,
+                MasterCalendar._location,
+                MasterCalendar._description,
+                MasterCalendar.target_grades,
+            )
             .filter(MasterCalendar.source_channel_id == channel_id)
             .all()
         )
 
         context_list = []
-        for schedule in schedules:
+        for s_id, _title, start_dt, end_dt, _loc, _desc, target_grades in schedules:
             context_obj = MasterScheduleContext(
-                id=schedule.id,
-                title=schedule.title,
-                start_datetime=schedule.start_datetime.isoformat(),
-                end_datetime=schedule.end_datetime.isoformat(),
-                location=schedule.location,
-                description=schedule.description,
-                target_grades=schedule.target_grades or [],
+                id=s_id,
+                title=decrypt_text(_title),               # 메모리상에서 복호화
+                start_datetime=start_dt.isoformat(),
+                end_datetime=end_dt.isoformat(),
+                location=decrypt_text(_loc) if _loc else None,  # 메모리상에서 복호화
+                description=decrypt_text(_desc) if _desc else None, # 메모리상에서 복호화
+                target_grades=target_grades or [],
             )
             context_list.append(context_obj.model_dump())
 
+        db.expunge_all()  # 세션 캐시 즉시 비우기
         return context_list
 
     async def analyze_message_with_rag(
@@ -48,7 +60,7 @@ class LLMService:
         current_year: int = 2026,
     ) -> RAGAnalysisResult:
         """[RAG Generation] 기존 일정 Context + 새 메시지를 GPT-4o-mini로 전달하여 C/U/D 판단"""
-        # 1. RAG Context 추출
+        # 1. RAG Context 추출 (안전한 복호화 텍스트 반환)
         existing_schedules = self._get_existing_schedules_context(db, channel_id)
         context_json_str = json.dumps(
             existing_schedules, ensure_ascii=False, indent=2
@@ -87,7 +99,7 @@ class LLMService:
                 ],
                 response_format=RAGAnalysisResult,
                 temperature=0.0,  # 결정론적 판단을 위해 0으로 고정
-                seed = 42,
+                seed=42,
             )
 
             result: RAGAnalysisResult = response.choices[0].message.parsed
