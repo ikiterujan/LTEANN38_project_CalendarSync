@@ -1,6 +1,6 @@
-from sqlalchemy import Column, String, Integer, DateTime, Boolean, ForeignKey
+from datetime import datetime, timezone
+from sqlalchemy import Column, String, Integer, DateTime, Boolean, ForeignKey, func
 from sqlalchemy.orm import relationship
-from datetime import datetime
 
 from app.core.database import Base
 
@@ -9,9 +9,18 @@ class UserChannelMapping(Base):
     """사용자와 팀즈 채널 간 N:M 매핑 테이블"""
     __tablename__ = "user_channel_mappings"
 
-    user_id = Column(String(100), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
-    channel_id = Column(String(100), ForeignKey("channels.channel_id", ondelete="CASCADE"), primary_key=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    user_id = Column(
+        String(100), 
+        ForeignKey("users.id", ondelete="CASCADE"), 
+        primary_key=True
+    )
+    channel_id = Column(
+        String(100), 
+        ForeignKey("channels.channel_id", ondelete="CASCADE"), 
+        primary_key=True
+    )
+    # Oracle 호환: DB 서버 시간(func.now()) 사용 또는 Timezone Aware Datetime 지정
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
 class User(Base):
@@ -21,9 +30,12 @@ class User(Base):
     id = Column(String(100), primary_key=True)  # MS Graph User ID
     email = Column(String(255), nullable=False, unique=True)
     grade = Column(Integer, nullable=True)
-    is_active = Column(Boolean, default=True)
-    last_active_at = Column(DateTime, default=datetime.utcnow)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # Oracle 호환: Boolean은 internal적으로 NUMBER(1)로 변환 처리됨
+    is_active = Column(Boolean, default=True, nullable=False)
+    
+    last_active_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     channels = relationship("Channel", secondary="user_channel_mappings", back_populates="users")
     sync_logs = relationship("UserSyncLog", back_populates="user", cascade="all, delete-orphan")
@@ -36,7 +48,8 @@ class Channel(Base):
     channel_id = Column(String(100), primary_key=True)  # Teams Channel ID
     team_id = Column(String(100), nullable=False)
     channel_name = Column(String(255), nullable=True)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     users = relationship("User", secondary="user_channel_mappings", back_populates="channels")
     master_schedules = relationship("MasterCalendar", back_populates="channel")
