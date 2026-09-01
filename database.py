@@ -1,22 +1,37 @@
-from sqlalchemy import create_engine
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
 import os
+from dotenv import load_dotenv
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker, declarative_base
 
-# Render 환경변수에서 DATABASE_URL 가져오기
-SQLALCHEMY_DATABASE_URL = os.getenv("DB_URL")
+# .env 파일 로드
+load_dotenv()
 
-# Render가 제공하는 postgres:// 시작 주소를 postgresql:// 로 변경
-if SQLALCHEMY_DATABASE_URL and SQLALCHEMY_DATABASE_URL.startswith("postgres://"):
-    SQLALCHEMY_DATABASE_URL = SQLALCHEMY_DATABASE_URL.replace("postgres://", "postgresql://", 1)
+# 환경변수 읽기 (설정되어 있지 않으면 에러 발생)
+DB_USER = os.getenv("DB_USER")
+DB_PASSWORD = os.getenv("DB_PASSWORD")
+DB_DSN = os.getenv("DB_DSN")
+WALLET_DIR = os.getenv("WALLET_DIR", "/home/ubuntu/wallet")
 
-# DB 엔진 생성
-engine = create_engine(SQLALCHEMY_DATABASE_URL)
+if not all([DB_USER, DB_PASSWORD, DB_DSN]):
+    raise ValueError("DB 접속에 필요한 필수 환경변수(DB_USER, DB_PASSWORD, DB_DSN)가 설정되지 않았습니다.")
+
+# SQLAlchemy Oracle 접속 URL
+SQLALCHEMY_DATABASE_URL = f"oracle+oracledb://{DB_USER}:{DB_PASSWORD}@{DB_DSN}"
+
+# 오라클 Wallet 연동
+engine = create_engine(
+    SQLALCHEMY_DATABASE_URL,
+    connect_args={
+        "config_dir": WALLET_DIR,
+        "wallet_location": WALLET_DIR,
+        "wallet_password": DB_PASSWORD,
+    },
+    pool_pre_ping=True
+)
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
 Base = declarative_base()
 
-# DB 세션 의존성 함수 (FastAPI 라우터에서 사용)
 def get_db():
     db = SessionLocal()
     try:
