@@ -1,36 +1,30 @@
-import os
-from dotenv import load_dotenv
+import oracledb
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
-
-# .env 파일 로드
-load_dotenv()
-
-# 환경변수 읽기 (설정되어 있지 않으면 에러 발생)
-DB_USER = os.getenv("DB_USER")
-DB_PASSWORD = os.getenv("DB_PASSWORD")
-DB_DSN = os.getenv("DB_DSN")
-WALLET_DIR = os.getenv("WALLET_DIR", "/home/ubuntu/wallet")
-
-if not all([DB_USER, DB_PASSWORD, DB_DSN]):
-    raise ValueError("DB 접속에 필요한 필수 환경변수(DB_USER, DB_PASSWORD, DB_DSN)가 설정되지 않았습니다.")
+from app.core.config import settings
 
 # SQLAlchemy Oracle 접속 URL
-SQLALCHEMY_DATABASE_URL = f"oracle+oracledb://{DB_USER}:{DB_PASSWORD}@{DB_DSN}"
+SQLALCHEMY_DATABASE_URL = (
+    f"oracle+oracledb://{settings.DB_USER}:{settings.DB_PASSWORD}@{settings.DB_DSN}"
+)
 
-# 오라클 Wallet 연동
+# 오라클 Wallet 및 Connection Pool 설정
 engine = create_engine(
     SQLALCHEMY_DATABASE_URL,
     connect_args={
-        "config_dir": WALLET_DIR,
-        "wallet_location": WALLET_DIR,
-        "wallet_password": DB_PASSWORD,
+        "config_dir": settings.WALLET_DIR,
+        "wallet_location": settings.WALLET_DIR,
+        "wallet_password": settings.DB_PASSWORD,
     },
-    pool_pre_ping=True
+    pool_size=10,             # 커넥션 풀 기본 크기
+    max_overflow=20,          # 순간 부하 시 추가 허용 커넥션
+    pool_recycle=3600,        # 1시간마다 커넥션 재생성 (Oracle Timeout 방지)
+    pool_pre_ping=True        # 끊어진 커넥션 감지 후 자동 재연결
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
+
 
 def get_db():
     db = SessionLocal()

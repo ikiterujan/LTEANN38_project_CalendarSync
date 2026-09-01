@@ -1,4 +1,3 @@
-import os
 from typing import Optional
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -9,8 +8,14 @@ class Settings(BaseSettings):
     ENV: str = "development"
     DEBUG: bool = True
 
-    # Database
-    DATABASE_URL: str
+    # Database (Oracle Wallet)
+    DB_USER: str
+    DB_PASSWORD: str
+    DB_DSN: str
+    WALLET_DIR: str = "/home/ubuntu/wallet"
+
+    # Security
+    DATA_ENCRYPTION_KEY: str
 
     # OpenAI / LLM Config
     OPENAI_API_KEY: str
