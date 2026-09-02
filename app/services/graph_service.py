@@ -1,6 +1,6 @@
 import logging
-from typing import Optional, Any, Dict
-from datetime import datetime
+from typing import Optional, Any, Dict, List
+from datetime import datetime, timezone, timedelta
 import httpx
 
 logger = logging.getLogger(__name__)
@@ -65,6 +65,91 @@ class GraphService:
             res = await self._client.request(method, url, headers=headers, json=json_payload)
 
         return res
+
+    async def _get_all_pages(self, url: str) -> List[Dict[str, Any]]:
+        """@odata.nextLink 페이지네이션을 모두 따라가며 value 배열을 누적 반환"""
+        items: List[Dict[str, Any]] = []
+        headers = await self._get_headers()
+
+        while url:
+            res = await self._client.get(url, headers=headers)
+            if res.status_code == 401:
+                await self._get_access_token()
+                headers = await self._get_headers()
+                res = await self._client.get(url, headers=headers)
+
+            res.raise_for_status()
+            data = res.json()
+            items.extend(data.get("value", []))
+            url = data.get("@odata.nextLink")
+
+        return items
+
+    # ------------------------------------------------------------------
+    # MS Graph Teams Channel Discovery
+    # ------------------------------------------------------------------
+
+    async def get_user_joined_channels(self, user_id: str) -> List[Dict[str, Any]]:
+        """[GET] 사용자가 속한 모든 팀의 채널 목록을 (channel_id, team_id, displayName) 형태로 반환"""
+        teams_url = f"https://graph.microsoft.com/v1.0/users/{user_id}/joinedTeams"
+
+        try:
+            joined_teams = await self._get_all_pages(teams_url)
+        except httpx.HTTPStatusError as e:
+            logger.error(f"[Graph API] User {user_id} 소속 팀 조회 실패: {e}")
+            return []
+
+        channels: List[Dict[str, Any]] = []
+        for team in joined_teams:
+            team_id = team["id"]
+            channels_url = f"https://graph.microsoft.com/v1.0/teams/{team_id}/channels"
+            try:
+                team_channels = await self._get_all_pages(channels_url)
+            except httpx.HTTPStatusError as e:
+                logger.error(f"[Graph API] Team {team_id} 채널 조회 실패: {e}")
+                continue
+
+            for ch in team_channels:
+                channels.append({
+                    "id": ch["id"],
+                    "team_id": team_id,
+                    "displayName": ch.get("displayName"),
+                })
+
+        return channels
+
+    async def get_channel_messages(
+        self,
+        team_id: str,
+        channel_id: str,
+        since_minutes: int = 90,
+    ) -> List[Dict[str, Any]]:
+        """[GET] 채널의 최근 메시지 목록 조회 (기본: 최근 90분 이내 등록/수정분)
+        폴링 주기(기본 1시간)보다 여유를 두어 스케줄 지연으로 인한 누락을 방지한다.
+        """
+        url = f"https://graph.microsoft.com/v1.0/teams/{team_id}/channels/{channel_id}/messages/delta"
+
+        try:
+            messages = await self._get_all_pages(url)
+        except httpx.HTTPStatusError as e:
+            logger.error(f"[Graph API] Channel {channel_id} 메시지 조회 실패: {e}")
+            return []
+
+        cutoff = datetime.now(timezone.utc) - timedelta(minutes=since_minutes)
+        recent_messages = []
+        for msg in messages:
+            if msg.get("messageType") != "message" or msg.get("deletedDateTime"):
+                continue
+
+            last_modified = msg.get("lastModifiedDateTime") or msg.get("createdDateTime")
+            if last_modified:
+                msg_dt = datetime.fromisoformat(last_modified.replace("Z", "+00:00"))
+                if msg_dt < cutoff:
+                    continue
+
+            recent_messages.append(msg)
+
+        return recent_messages
 
     # ------------------------------------------------------------------
     # MS Graph Calendar CRUD Operations

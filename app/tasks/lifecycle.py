@@ -1,7 +1,8 @@
 import logging
-from datetime import datetime, timedelta
+from datetime import timedelta
 from sqlalchemy.orm import Session
 from app.core.database import SessionLocal
+from app.core.timezone import now_kst
 from app.models.domain import User
 from app.models.master_calendar import UserSyncLog
 
@@ -11,7 +12,7 @@ async def run_lifecycle_cleanup_task():
     """[주 주기 실행] 휴면 계정 비활성화 및 오래된 로그 정리"""
     db: Session = SessionLocal()
     try:
-        now = datetime.utcnow()
+        now = now_kst()
 
         # 1. 90일 이상 미활동 유저 비활성화 (휴면 처리)
         inactive_threshold = now - timedelta(days=90)

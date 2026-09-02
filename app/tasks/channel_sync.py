@@ -34,8 +34,12 @@ async def sync_user_channels_task():
             return
 
         # 2. asyncio.gather로 Graph API 요청 병렬 실행 (순수 user_id만 전달)
+        # _sync_single_user_channels가 자체적으로 예외를 삼키지만, 방어적으로 한 번 더 필터링한다
         tasks = [_sync_single_user_channels(u_id) for u_id in active_user_ids]
-        results: List[Tuple[str, List[Dict[str, Any]]]] = await asyncio.gather(*tasks)
+        raw_results = await asyncio.gather(*tasks, return_exceptions=True)
+        results: List[Tuple[str, List[Dict[str, Any]]]] = [
+            r for r in raw_results if not isinstance(r, BaseException)
+        ]
 
         # 3. 기존 DB 데이터 한 번에 조회하여 Set/Dict 캐싱 (N+1 쿼리 완전 제거)
         existing_channels: Dict[str, Channel] = {

@@ -3,6 +3,7 @@ import asyncio
 from typing import List, Tuple, Dict, Any
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.database import SessionLocal
 from app.core.dependencies import graph_service, llm_service
 from app.services.sync_service import SyncService
@@ -20,9 +21,11 @@ async def _process_single_channel_messages(channel_id: str, team_id: str):
     # 병렬 태스크별 독립 세션 생성 (세션 충돌 및 메모리 Stash 완벽 방지)
     db: Session = SessionLocal()
     try:
+        lookback_minutes = settings.MESSAGE_SYNC_INTERVAL_HOURS * 60 + settings.MESSAGE_SYNC_LOOKBACK_BUFFER_MINUTES
         messages: List[Dict[str, Any]] = await graph_service.get_channel_messages(
             team_id=team_id,
-            channel_id=channel_id
+            channel_id=channel_id,
+            since_minutes=lookback_minutes
         )
 
         for msg in messages:
@@ -70,7 +73,7 @@ async def sync_channel_messages_task():
             for ch_id, team_id in channels
         ]
         
-        await asyncio.gather(*tasks)
+        await asyncio.gather(*tasks, return_exceptions=True)
         logger.info("✅ 메시지 및 일정 동기화 태스크 완료 (병렬 처리)")
 
     except Exception as e:
