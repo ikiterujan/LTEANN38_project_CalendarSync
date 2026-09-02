@@ -104,6 +104,19 @@ class SyncService:
         """[CREATE] MasterCalendar 생성 (자동 암호화) -> asyncio.gather 병렬 Fan-out"""
         content_hash = self._generate_content_hash(action)
 
+        # 0. 동일 채널 내 동일 content_hash 존재 시 중복 생성 방지 (LLM 오판 대비 최종 방어선)
+        duplicate = (
+            db.query(MasterCalendar.id)
+            .filter(
+                MasterCalendar.source_channel_id == channel_id,
+                MasterCalendar.content_hash == content_hash,
+            )
+            .first()
+        )
+        if duplicate:
+            logger.info(f"[CREATE SKIP] 동일 content_hash의 일정이 이미 존재함 (기존 ID: {duplicate[0]})")
+            return
+
         # 1. MasterCalendar 생성 (@property를 통해 title, location, description 자동 암호화 저장됨)
         master_item = MasterCalendar(
             source_channel_id=channel_id,
@@ -136,10 +149,10 @@ class SyncService:
             )
             for u_id, u_grade in target_users
         ]
-        results = await asyncio.gather(*tasks)
+        results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        # 4. 성공한 로그들 메인 스레드 DB 세션에서 일괄 저장
-        valid_logs = [log for log in results if log is not None]
+        # 4. 성공한 로그들 메인 스레드 DB 세션에서 일괄 저장 (예외/None 결과는 제외)
+        valid_logs = [log for log in results if isinstance(log, UserSyncLog)]
         if valid_logs:
             db.add_all(valid_logs)
         db.commit()
@@ -206,7 +219,7 @@ class SyncService:
             logger.warning("[UPDATE] master_schedule_id 누락으로 스킵")
             return
 
-        master_item = db.query(MasterCalendar).get(action.master_schedule_id)
+        master_item = db.get(MasterCalendar, action.master_schedule_id)
         if not master_item:
             logger.error(f"[UPDATE] ID {action.master_schedule_id} 마스터 일정을 찾을 수 없음")
             return
@@ -237,10 +250,10 @@ class SyncService:
             )
             for u_id, u_grade in target_users
         ]
-        results = await asyncio.gather(*tasks)
+        results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        # 4. 새로 생성된 UserSyncLog만 추가 저장
-        new_logs = [log for log in results if log is not None]
+        # 4. 새로 생성된 UserSyncLog만 추가 저장 (예외/None 결과는 제외)
+        new_logs = [log for log in results if isinstance(log, UserSyncLog)]
         if new_logs:
             db.add_all(new_logs)
 
@@ -265,7 +278,7 @@ class SyncService:
             logger.warning("[DELETE] master_schedule_id 누락으로 스킵")
             return
 
-        master_item = db.query(MasterCalendar).get(action.master_schedule_id)
+        master_item = db.get(MasterCalendar, action.master_schedule_id)
         if not master_item:
             logger.error(f"[DELETE] ID {action.master_schedule_id} 마스터 일정을 찾을 수 없음")
             return
@@ -283,7 +296,7 @@ class SyncService:
             for u_id, evt_id in sync_logs if evt_id
         ]
         if tasks:
-            await asyncio.gather(*tasks)
+            await asyncio.gather(*tasks, return_exceptions=True)
 
         # 3. MasterCalendar DB 삭제 (CASCADE 설정으로 UserSyncLog도 자동 삭제됨)
         db.delete(master_item)

@@ -29,6 +29,8 @@ class Settings(BaseSettings):
     # Sync Pipeline Schedules
     CHANNEL_SYNC_INTERVAL_HOURS: int = 4
     MESSAGE_SYNC_INTERVAL_HOURS: int = 1
+    # 메시지 조회 시 폴링 주기보다 넉넉하게 잡는 여유(분) - 실행 지연으로 인한 누락 방지
+    MESSAGE_SYNC_LOOKBACK_BUFFER_MINUTES: int = 30
 
     model_config = SettingsConfigDict(
         env_file=".env",

@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import List
+from typing import List, Optional
 from sqlalchemy.orm import Session
 from openai import AsyncOpenAI
 
@@ -8,6 +8,7 @@ from app.models.master_calendar import MasterCalendar
 from app.schemas.master_calendar import MasterScheduleContext
 from app.schemas.llm_schema import RAGAnalysisResult
 from app.core.security import decrypt_text  # 복호화 함수 추가
+from app.core.timezone import now_kst
 
 logger = logging.getLogger(__name__)
 
@@ -57,9 +58,12 @@ class LLMService:
         db: Session,
         channel_id: str,
         message_text: str,
-        current_year: int = 2026,
+        current_year: Optional[int] = None,
     ) -> RAGAnalysisResult:
         """[RAG Generation] 기존 일정 Context + 새 메시지를 GPT-4o-mini로 전달하여 C/U/D 판단"""
+        if current_year is None:
+            current_year = now_kst().year
+
         # 1. RAG Context 추출 (안전한 복호화 텍스트 반환)
         existing_schedules = self._get_existing_schedules_context(db, channel_id)
         context_json_str = json.dumps(

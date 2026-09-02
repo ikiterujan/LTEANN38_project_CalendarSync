@@ -2,11 +2,12 @@ import logging
 import asyncio
 from typing import List, Dict, Any, Tuple
 from collections import defaultdict
-from datetime import datetime, timezone, timedelta
+from datetime import datetime
 from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal
 from app.core.dependencies import graph_service
+from app.core.timezone import now_kst
 from app.models.domain import User
 from app.models.master_calendar import MasterCalendar, UserSyncLog
 
@@ -41,10 +42,9 @@ async def send_daily_notice_task():
     db: Session = SessionLocal()
     try:
         # 1. KST 기준 오늘 00:00:00 ~ 23:59:59 범위 설정
-        kst = timezone(timedelta(hours=9))
-        now_kst = datetime.now(kst)
-        start_of_day = now_kst.replace(hour=0, minute=0, second=0, microsecond=0)
-        end_of_day = now_kst.replace(hour=23, minute=59, second=59, microsecond=999999)
+        today_kst = now_kst()
+        start_of_day = today_kst.replace(hour=0, minute=0, second=0, microsecond=0)
+        end_of_day = today_kst.replace(hour=23, minute=59, second=59, microsecond=999999)
 
         # 2. N+1 쿼리 방지: 단 1회의 JOIN 쿼리로 오늘 일정이 있는 유저들의 스칼라 데이터만 일괄 조회
         results: List[Tuple[str, str, datetime, str]] = (
