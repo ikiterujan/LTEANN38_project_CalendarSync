@@ -11,6 +11,7 @@ from app.tasks.daily_notice import send_daily_notice_task
 from app.tasks.lifecycle import run_lifecycle_cleanup_task
 
 logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 
 # 스케줄러 공통 방어 옵션 설정
 job_defaults = {

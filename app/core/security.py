@@ -4,6 +4,7 @@ from cryptography.fernet import Fernet
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 
 # DATA_ENCRYPTION_KEY는 config.py에서 필수(Required) 필드로 강제되므로
 # 값이 없으면 앱 기동 시점(Settings 로드 단계)에서 즉시 실패한다.

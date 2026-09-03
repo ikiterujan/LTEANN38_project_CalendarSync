@@ -12,6 +12,7 @@ from app.services.graph_service import GraphService
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 
 # APIRouter 생성
 router = APIRouter(tags=["Webhook"])

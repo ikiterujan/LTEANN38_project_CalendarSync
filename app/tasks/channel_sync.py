@@ -10,6 +10,7 @@ from app.core.dependencies import graph_service
 from app.models.domain import User, Channel, UserChannelMapping
 
 logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 
 
 async def _sync_single_user_channels(user_id: str) -> Tuple[str, List[Dict[str, Any]]]:

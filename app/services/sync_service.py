@@ -13,6 +13,7 @@ from app.schemas.llm_schema import ScheduleAction, RAGAnalysisResult
 from app.services.graph_service import GraphService
 
 logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 
 def _is_target_user(user_grade: Optional[str], target_grades: List[int]) -> bool:
     if not target_grades:  # target_grades가 비어있으면 전체 학년 대상

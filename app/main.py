@@ -7,8 +7,10 @@ from app.tasks.scheduler import start_scheduler, stop_scheduler
 from app.reset import resetdb
 from app.core.config import settings
 from app.endpoints.webhook import router as webhook_router
+import sys
 
 logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 
 
 @asynccontextmanager

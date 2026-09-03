@@ -10,6 +10,7 @@ from app.models.domain import User
 from app.models.master_calendar import UserSyncLog
 
 logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 
 
 async def run_lifecycle_cleanup_task():

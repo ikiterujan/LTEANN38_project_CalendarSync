@@ -14,6 +14,7 @@ from app.models.domain import User
 from app.models.master_calendar import MasterCalendar, UserSyncLog
 
 logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 
 
 async def _send_notice_to_single_user(user_id: str, schedule_items_info: List[Dict[str, Any]]):

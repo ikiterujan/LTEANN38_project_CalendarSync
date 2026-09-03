@@ -12,6 +12,7 @@ from app.services.sync_service import SyncService
 from app.models.domain import Channel
 
 logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 sync_service = SyncService(graph_service)
 
 
