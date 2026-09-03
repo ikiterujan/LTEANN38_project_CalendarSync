@@ -77,7 +77,7 @@ async def teams_event_webhook(
                 "백그라운드에서 공지사항 및 포스터를 분석하여 "
                 "캘린더로 자동 동기화해 드립니다. 별도의 명령어 없이 작동합니다."
             )
-            background_tasks.add_task(graph_service.send_teams_chat_message, user_conversation_id, service_url, welcome_text)
+            background_tasks.add_task(graph_service.send_teams_chat_message,user_id, welcome_text)
 
         elif activity_type == "message":
 
@@ -87,7 +87,7 @@ async def teams_event_webhook(
                 "채널 공지사항 및 일정은 설정된 주기에 따라 자동 동기화됩니다."
             )
             background_tasks.add_task(
-                background_tasks.add_task(graph_service.send_teams_chat_message, user_conversation_id, service_url, welcome_text)
+                graph_service.send_teams_chat_message, user_id, user_id, welcome_text
             )
 
         return {"status": "ok"}
