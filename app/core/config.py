@@ -33,9 +33,9 @@ class Settings(BaseSettings):
     AZURE_CLIENT_SECRET: str
 
     # Sync Pipeline Schedules
-    CHANNEL_SYNC_INTERVAL_HOURS: int = 4
-    MESSAGE_SYNC_INTERVAL_HOURS: int = 1
-    MESSAGE_SYNC_LOOKBACK_BUFFER_MINUTES: int = 30
+    CHANNEL_SYNC_INTERVAL_HOURS: float = 0.1
+    MESSAGE_SYNC_INTERVAL_HOURS: float = 0.1
+    MESSAGE_SYNC_LOOKBACK_BUFFER_MINUTES: int = 0
 
     model_config = SettingsConfigDict(
         env_file=".env",
