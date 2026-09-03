@@ -64,7 +64,12 @@ class User(Base):
         cascade="all, delete-orphan"
     )
     
+<<<<<<< Updated upstream
     conversation_id = Column(String(255), nullable=True)
+=======
+    conversation_id = Column(String(255), unique=True, nullable=True)
+    service_url = Column(String(255), nullable=True)
+>>>>>>> Stashed changes
 
 
 class Channel(Base):
