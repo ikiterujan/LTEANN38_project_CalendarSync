@@ -1,6 +1,7 @@
 #app/models/master_calendar.py
 import uuid
-from sqlalchemy import Column, String, DateTime, ForeignKey, JSON, func
+from sqlalchemy import Column, String, DateTime, ForeignKey, func
+from sqlalchemy.dialects.oracle import JSON
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
