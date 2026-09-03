@@ -4,6 +4,7 @@ from datetime import datetime
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from app.core.config import settings
+from app.core.timezone import now_kst
 from app.tasks.channel_sync import sync_user_channels_task
 from app.tasks.message_sync import sync_channel_messages_task
 from app.tasks.daily_notice import send_daily_notice_task
@@ -29,7 +30,7 @@ def start_scheduler():
         logger.warning("⚠️ 스케줄러가 이미 실행 중입니다.")
         return
 
-    now = datetime.now()
+    now = now_kst()
 
     # 1. 채널 동기화 (기본 4시간 - 앱 시작 즉시 1회 실행 후 주기적 실행)
     scheduler.add_job(

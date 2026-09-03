@@ -36,6 +36,8 @@ class Settings(BaseSettings):
     CHANNEL_SYNC_INTERVAL_HOURS: int = 1
     MESSAGE_SYNC_INTERVAL_HOURS: int = 1
     MESSAGE_SYNC_LOOKBACK_BUFFER_MINUTES: int = 30
+    
+    DUPLICATE_WEBHOOK_DEBOUNCE_SECONDS = 30
 
     model_config = SettingsConfigDict(
         env_file=".env",

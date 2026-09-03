@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from app.tasks.scheduler import start_scheduler, stop_scheduler
 from app.reset import resetdb
 from app.core.config import settings
+from app.endpoints.webhook import router as webhook_router
 
 logger = logging.getLogger(__name__)
 
@@ -16,24 +17,20 @@ async def lifespan(app: FastAPI):
         logger.warning("Resetting DB...")
         resetdb()
         
-    # Gunicorn/Uvicorn Multi-Worker 환경 중복 실행 방지
-    # (단일 컨테이너 내 워커 분리 또는 독립 스케줄러 프로세스 제어용)
-    should_run_scheduler = os.environ.get("RUN_SCHEDULER", "true").lower() == "true"
-    
-    if should_run_scheduler:
-        logger.info("Initializing APScheduler...")
-        start_scheduler()
+    logger.info("Initializing APScheduler...")
+    start_scheduler()
     
     yield
     
-    if should_run_scheduler:
-        logger.info("Shutting down APScheduler...")
-        stop_scheduler()
+    logger.info("Shutting down APScheduler...")
+    stop_scheduler()
 
 app = FastAPI(
     title="Teams Sync Service",
     lifespan=lifespan
 )
+
+app.include_router(webhook_router)
 
 @app.get("/health")
 def health_check():
