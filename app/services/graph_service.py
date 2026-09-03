@@ -3,7 +3,6 @@ import logging
 from typing import Optional, Any, Dict, List
 from datetime import datetime, timezone, timedelta
 import httpx
-
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 

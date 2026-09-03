@@ -10,6 +10,7 @@ from app.core.database import get_db
 from app.models.domain import User
 from app.services.graph_service import GraphService
 from app.core.config import settings
+from app.core.dependencies import graph_service
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
@@ -18,9 +19,6 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(me
 router = APIRouter(tags=["Webhook"])
 
 RECENT_SYNC_REQUESTS: Dict[str, float] = {}
-
-
-graph_service = GraphService()
 
 @router.post("/api/messages")
 async def teams_event_webhook(
