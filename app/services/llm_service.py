@@ -1,13 +1,14 @@
+#app/services/llm_service.py
 import json
 import logging
 from typing import List, Optional
 from sqlalchemy.orm import Session
+from sqlalchemy import select
 from openai import AsyncOpenAI
 
 from app.models.master_calendar import MasterCalendar
 from app.schemas.master_calendar import MasterScheduleContext
 from app.schemas.llm_schema import RAGAnalysisResult
-from app.core.security import decrypt_text  # 복호화 함수 추가
 from app.core.timezone import now_kst
 
 logger = logging.getLogger(__name__)
@@ -20,34 +21,39 @@ class LLMService:
     def _get_existing_schedules_context(
         self, db: Session, channel_id: str
     ) -> List[dict]:
-        """[RAG Retrieval] ORM 메모리 최적화 + 복호화를 거쳐 Context용 JSON 리스트 생성"""
+        """[RAG Retrieval] ORM 메모리 Overhead 없이 핀포인트 select 프로젝션 수행.
+        EncryptedString에 의해 title, location, description은 이미 자동으로 복호화된 상태입니다.
+        """
         
-        # ORM 객체 매핑 대신 튜플 단위 핀포인트 조회 (메모리 Stash 방지)
-        schedules = (
-            db.query(
+        # 1. ORM 객체 매핑 대신 핀포인트 select 프로젝션 (EncryptedString 자동 복호화 적용됨)
+        stmt = (
+            select(
                 MasterCalendar.id,
-                MasterCalendar._title,
+                MasterCalendar.title,
                 MasterCalendar.start_datetime,
                 MasterCalendar.end_datetime,
-                MasterCalendar._location,
-                MasterCalendar._description,
+                MasterCalendar.location,
+                MasterCalendar.description,
                 MasterCalendar.target_grades,
             )
-            .filter(MasterCalendar.source_channel_id == channel_id)
-            .all()
+            .where(MasterCalendar.source_channel_id == channel_id)
         )
 
+        rows = db.execute(stmt).mappings().all()
+
         context_list = []
-        for s_id, _title, start_dt, end_dt, _loc, _desc, target_grades in schedules:
-            context_obj = MasterScheduleContext(
-                id=s_id,
-                title=decrypt_text(_title),               # 메모리상에서 복호화
-                start_datetime=start_dt.isoformat(),
-                end_datetime=end_dt.isoformat(),
-                location=decrypt_text(_loc) if _loc else None,  # 메모리상에서 복호화
-                description=decrypt_text(_desc) if _desc else None, # 메모리상에서 복호화
-                target_grades=target_grades or [],
-            )
+        for row in rows:
+            # datetime 필드 isoformat 변환 처리 및 Pydantic 매핑
+            row_dict = dict(row)
+            if row_dict.get("start_datetime"):
+                row_dict["start_datetime"] = row_dict["start_datetime"].isoformat()
+            if row_dict.get("end_datetime"):
+                row_dict["end_datetime"] = row_dict["end_datetime"].isoformat()
+            if row_dict.get("target_grades") is None:
+                row_dict["target_grades"] = []
+
+            # MasterScheduleContext (pydantic v2 model_config 적용됨) 변환
+            context_obj = MasterScheduleContext.model_validate(row_dict)
             context_list.append(context_obj.model_dump())
 
         db.expunge_all()  # 세션 캐시 즉시 비우기
@@ -64,7 +70,7 @@ class LLMService:
         if current_year is None:
             current_year = now_kst().year
 
-        # 1. RAG Context 추출 (안전한 복호화 텍스트 반환)
+        # 1. RAG Context 추출 (자동 복호화된 평문 텍스트 반환)
         existing_schedules = self._get_existing_schedules_context(db, channel_id)
         context_json_str = json.dumps(
             existing_schedules, ensure_ascii=False, indent=2

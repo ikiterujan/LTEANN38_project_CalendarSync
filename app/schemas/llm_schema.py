@@ -1,3 +1,4 @@
+#app/schemas/llm_schema.py
 from typing import List, Optional, Literal
 from pydantic import BaseModel, Field
 
@@ -14,8 +15,11 @@ class ScheduleAction(BaseModel):
     title: str = Field(..., description="일정 제목")
     start_datetime: str = Field(..., description="시작 일시 (ISO 8601 형식: YYYY-MM-DDTHH:MM:SS)")
     end_datetime: str = Field(..., description="종료 일시 (ISO 8601 형식: YYYY-MM-DDTHH:MM:SS)")
-    location: Optional[str] = Field(None, description="장소 (없을 시 빈값)")
+    
+    # DB의 EncryptedString 컬럼 매핑 시 None 및 빈 값 방어
+    location: Optional[str] = Field(None, description="장소 (없을 시 None)")
     description: Optional[str] = Field(None, description="일정 상세 내용 및 주의사항")
+    
     target_grades: List[int] = Field(
         default_factory=list, 
         description="대상 학년 목록 (예: [1, 2], 전학년 공지인 경우 [1, 2, 3, 4])"

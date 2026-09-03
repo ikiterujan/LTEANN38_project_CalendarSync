@@ -1,3 +1,4 @@
+#app/core/dependencies.py
 from openai import AsyncOpenAI
 from app.core.config import settings
 from app.services.graph_service import GraphService

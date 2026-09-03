@@ -1,3 +1,4 @@
+#app/services/graph_service.py
 import logging
 from typing import Optional, Any, Dict, List
 from datetime import datetime, timezone, timedelta
@@ -124,9 +125,7 @@ class GraphService:
         channel_id: str,
         since_minutes: int = 90,
     ) -> List[Dict[str, Any]]:
-        """[GET] 채널의 최근 메시지 목록 조회 (기본: 최근 90분 이내 등록/수정분)
-        폴링 주기(기본 1시간)보다 여유를 두어 스케줄 지연으로 인한 누락을 방지한다.
-        """
+        """[GET] 채널의 최근 메시지 목록 조회"""
         url = f"https://graph.microsoft.com/v1.0/teams/{team_id}/channels/{channel_id}/messages/delta"
 
         try:
@@ -152,7 +151,7 @@ class GraphService:
         return recent_messages
 
     # ------------------------------------------------------------------
-    # MS Graph Calendar CRUD Operations
+    # MS Graph Calendar CRUD Operations (EncryptedString 평문 수신 호환)
     # ------------------------------------------------------------------
 
     async def create_user_calendar_event(
@@ -169,17 +168,17 @@ class GraphService:
         url = f"https://graph.microsoft.com/v1.0/users/{user_id}/calendar/events"
 
         payload = {
-            "subject": title,
+            "subject": title,  # EncryptedString을 통해 복호화된 평문 전달
             "body": {
                 "contentType": "HTML",
                 "content": description or ""
             },
             "start": {
-                "dateTime": start_dt.isoformat(),
+                "dateTime": start_dt.isoformat() if isinstance(start_dt, datetime) else start_dt,
                 "timeZone": time_zone
             },
             "end": {
-                "dateTime": end_dt.isoformat(),
+                "dateTime": end_dt.isoformat() if isinstance(end_dt, datetime) else end_dt,
                 "timeZone": time_zone
             },
             "location": {
@@ -214,11 +213,11 @@ class GraphService:
                 "content": description or ""
             },
             "start": {
-                "dateTime": start_dt.isoformat(),
+                "dateTime": start_dt.isoformat() if isinstance(start_dt, datetime) else start_dt,
                 "timeZone": time_zone
             },
             "end": {
-                "dateTime": end_dt.isoformat(),
+                "dateTime": end_dt.isoformat() if isinstance(end_dt, datetime) else end_dt,
                 "timeZone": time_zone
             },
             "location": {

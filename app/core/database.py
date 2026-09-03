@@ -1,3 +1,4 @@
+#app/core/database.py
 import oracledb
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
@@ -5,9 +6,6 @@ from app.core.config import settings
 
 # 1. oracledb 라이브러리 활용: Wallet 기본 설정 적용 (oracledb 변수 직접 사용)
 oracledb.defaults.config_dir = settings.WALLET_DIR
-
-# 2. (선택사항) Thick 모드가 필요한 경우 oracledb 사용
-# oracledb.init_oracle_client()
 
 # SQLAlchemy Oracle 접속 URL
 SQLALCHEMY_DATABASE_URL = (

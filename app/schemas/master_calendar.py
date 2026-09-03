@@ -1,6 +1,6 @@
+#app/schemas/master_calendar.py
 from typing import Optional, List
-from datetime import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class MasterScheduleContext(BaseModel):
@@ -13,5 +13,5 @@ class MasterScheduleContext(BaseModel):
     description: Optional[str] = None
     target_grades: List[int] = []
 
-    class Config:
-        from_attributes = True
+    # Pydantic v2 표준 attribute/dict 자동 매핑 설정
+    model_config = ConfigDict(from_attributes=True)

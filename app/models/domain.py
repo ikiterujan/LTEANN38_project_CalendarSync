@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+#app/models/domain.py
 from sqlalchemy import Column, String, Integer, DateTime, Boolean, ForeignKey, func
 from sqlalchemy.orm import relationship
 
@@ -19,8 +19,11 @@ class UserChannelMapping(Base):
         ForeignKey("channels.channel_id", ondelete="CASCADE"), 
         primary_key=True
     )
-    # Oracle 호환: DB 서버 시간(func.now()) 사용 또는 Timezone Aware Datetime 지정
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    created_at = Column(
+        DateTime(timezone=True), 
+        server_default=func.now(), 
+        nullable=False
+    )
 
 
 class User(Base):
@@ -31,14 +34,35 @@ class User(Base):
     email = Column(String(255), nullable=False, unique=True)
     grade = Column(Integer, nullable=True)
     
-    # Oracle 호환: Boolean은 internal적으로 NUMBER(1)로 변환 처리됨
-    is_active = Column(Boolean, default=True, nullable=False)
+    # Oracle 호환: BOOLEAN -> NUMBER(1) 자동 대응 및 DB 레벨 Default 설정
+    is_active = Column(
+        Boolean, 
+        default=True, 
+        server_default="1", 
+        nullable=False
+    )
     
-    last_active_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    last_active_at = Column(
+        DateTime(timezone=True), 
+        server_default=func.now(), 
+        server_onupdate=func.now()
+    )
+    created_at = Column(
+        DateTime(timezone=True), 
+        server_default=func.now(), 
+        nullable=False
+    )
 
-    channels = relationship("Channel", secondary="user_channel_mappings", back_populates="users")
-    sync_logs = relationship("UserSyncLog", back_populates="user", cascade="all, delete-orphan")
+    channels = relationship(
+        "Channel", 
+        secondary="user_channel_mappings", 
+        back_populates="users"
+    )
+    sync_logs = relationship(
+        "UserSyncLog", 
+        back_populates="user", 
+        cascade="all, delete-orphan"
+    )
 
 
 class Channel(Base):
@@ -49,7 +73,18 @@ class Channel(Base):
     team_id = Column(String(100), nullable=False)
     channel_name = Column(String(255), nullable=True)
     
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    updated_at = Column(
+        DateTime(timezone=True), 
+        server_default=func.now(), 
+        server_onupdate=func.now()
+    )
 
-    users = relationship("User", secondary="user_channel_mappings", back_populates="channels")
-    master_schedules = relationship("MasterCalendar", back_populates="channel")
+    users = relationship(
+        "User", 
+        secondary="user_channel_mappings", 
+        back_populates="channels"
+    )
+    master_schedules = relationship(
+        "MasterCalendar", 
+        back_populates="channel"
+    )
