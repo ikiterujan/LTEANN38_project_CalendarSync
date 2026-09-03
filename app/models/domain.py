@@ -1,4 +1,5 @@
 #app/models/domain.py
+# app/models/domain.py
 from sqlalchemy import Column, String, Integer, DateTime, Boolean, ForeignKey, func
 from sqlalchemy.orm import relationship
 
@@ -30,9 +31,13 @@ class User(Base):
     """사용자 정보"""
     __tablename__ = "users"
 
-    id = Column(String(100), primary_key=True)  # MS Graph User ID
-    email = Column(String(255), nullable=False, unique=True)
+    id = Column(String(100), primary_key=True)  # MS Graph User ID / Teams User ID
+    email = Column(String(255), nullable=True, unique=True)  # Teams 웹훅 대응을 위해 nullable=True 설정
     grade = Column(Integer, nullable=True)
+    
+    # Teams 1:1 대화 및 웹훅 발송용 필드
+    conversation_id = Column(String(255), unique=True, nullable=True)
+    service_url = Column(String(255), nullable=True)
     
     # Oracle 호환: BOOLEAN -> NUMBER(1) 자동 대응 및 DB 레벨 Default 설정
     is_active = Column(
@@ -64,10 +69,6 @@ class User(Base):
         cascade="all, delete-orphan"
     )
 
-
-    conversation_id = Column(String(255), unique=True, nullable=True)
-    service_url = Column(String(255), nullable=True)
-    email = Column(String(255), nullable=True)
 
 class Channel(Base):
     """팀즈 채널 정보"""
