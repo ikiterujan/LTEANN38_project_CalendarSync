@@ -14,6 +14,16 @@ from app.services.graph_service import GraphService
 
 logger = logging.getLogger(__name__)
 
+def _is_target_user(user_grade: Optional[str], target_grades: List[int]) -> bool:
+    if not target_grades:  # target_grades가 비어있으면 전체 학년 대상
+        return True
+    if not user_grade:
+        return False
+    try:
+        # user_grade가 문자열 '1'로 올 경우 int 변환하여 비교
+        return int(user_grade) in target_grades
+    except ValueError:
+        return False
 
 class SyncService:
     def __init__(self, graph_service: GraphService):
@@ -24,6 +34,7 @@ class SyncService:
         raw_str = f"{action.title}|{action.start_datetime}|{action.end_datetime}|{action.location}|{action.description}"
         return hashlib.sha256(raw_str.encode("utf-8")).hexdigest()
 
+        
     async def process_rag_actions(
         self,
         db: Session,
@@ -71,7 +82,7 @@ class SyncService:
         end_dt: datetime,
         location: Optional[str],
         description: Optional[str],
-        target_grades: List[str]
+        target_grades: List[int]
     ) -> Optional[UserSyncLog]:
         # 대상 학년 필터링
         if target_grades and user_grade not in target_grades:
@@ -129,9 +140,12 @@ class SyncService:
             end_datetime=datetime.fromisoformat(action.end_datetime),
             location=action.location,
             description=action.description,
-            target_grades=action.target_grades,
+            grade1=(1 in action.target_grades),
+            grade2=(2 in action.target_grades),
+            grade3=(3 in action.target_grades),
             content_hash=content_hash
         )
+        
         db.add(master_item)
         db.flush()  # master_item.id 채번
 

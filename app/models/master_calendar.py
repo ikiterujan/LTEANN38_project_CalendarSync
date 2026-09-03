@@ -1,7 +1,6 @@
 #app/models/master_calendar.py
 import uuid
-from sqlalchemy import Column, String, DateTime, ForeignKey, func
-from sqlalchemy.dialects.oracle import JSON
+from sqlalchemy import Column, String, DateTime, ForeignKey, func, Boolean
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
@@ -27,8 +26,10 @@ class MasterCalendar(Base):
     start_datetime = Column(DateTime(timezone=True), nullable=False)
     end_datetime = Column(DateTime(timezone=True), nullable=False)
     
-    # Oracle JSON 데이터 매핑
-    target_grades = Column(JSON, default=list)
+    #목표학년
+    grade1 = Column(Boolean, default=False)
+    grade2 = Column(Boolean, default=False)
+    grade3 = Column(Boolean, default=False)
     
     content_hash = Column(String(64), nullable=True)
     created_at = Column(
