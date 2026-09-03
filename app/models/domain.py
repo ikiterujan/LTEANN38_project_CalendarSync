@@ -63,6 +63,8 @@ class User(Base):
         back_populates="user", 
         cascade="all, delete-orphan"
     )
+    
+    conversation_id = Column(String(255), nullable=True)
 
 
 class Channel(Base):
