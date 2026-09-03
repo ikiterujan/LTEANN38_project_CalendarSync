@@ -67,7 +67,7 @@ class User(Base):
 
     conversation_id = Column(String(255), unique=True, nullable=True)
     service_url = Column(String(255), nullable=True)
-
+    email = Column(String(255), nullable=True)
 
 class Channel(Base):
     """팀즈 채널 정보"""
