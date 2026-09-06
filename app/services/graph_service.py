@@ -245,22 +245,3 @@ class GraphService:
 
         res.raise_for_status()
         logger.info(f"[Graph API] User {user_id} 캘린더 일정 삭제 성공 (Event ID: {event_id})")
-
-    async def send_teams_chat_message(self, user_id: str, message: str):
-        """[POST] 1:1 Teams 채팅 메시지 발송 (일정 알림용)"""
-        url = f"https://graph.microsoft.com/v1.0/users/{user_id}/chats"
-        payload = {
-            "chatType": "oneOnOne",
-            "members": [
-                {
-                    "@odata.type": "#microsoft.graph.aadUserConversationMember",
-                    "roles": ["owner"],
-                    "user@odata.bind": f"https://graph.microsoft.com/v1.0/users('{user_id}')"
-                }
-            ]
-        }
-        res = await self._request_with_retry("POST", url, json_payload=payload)
-        if res.status_code in (200, 201):
-            chat_id = res.json()["id"]
-            msg_url = f"https://graph.microsoft.com/v1.0/chats/{chat_id}/messages"
-            await self._request_with_retry("POST", msg_url, json_payload={"body": {"content": message}})
