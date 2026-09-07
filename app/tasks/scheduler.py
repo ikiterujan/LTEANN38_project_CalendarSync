@@ -33,8 +33,8 @@ def start_scheduler():
 
     now = now_kst()
     
-    debug_time1 = now + timedelta(minutes=5)
-    debug_time2 = now + timedelta(minutes=10)
+    debug_time1 = now + timedelta(minutes=1)
+    debug_time2 = now + timedelta(minutes=2)
 
     # 1. 채널 동기화 (기본 4시간 - 앱 시작 즉시 1회 실행 후 주기적 실행)
     scheduler.add_job(
