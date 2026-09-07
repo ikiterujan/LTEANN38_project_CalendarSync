@@ -11,7 +11,7 @@ from sqlalchemy import select
 from app.core.database import get_db
 from app.models.domain import User
 from app.core.config import settings
-from app.core.dependencies import bot_service
+from app.core.dependencies import bot_service, graph_service
 from cachetools import TTLCache
 
 logger = logging.getLogger(__name__)
@@ -63,7 +63,15 @@ async def teams_event_webhook(
     service_url = data.get("serviceUrl")
 
     # 이메일 및 학년 계산
-    user_email = from_user.get("email") or from_user.get("userPrincipalName")
+    try:
+        # graph_service의 유저 정보 조회 메서드 호출 (메서드명은 프로젝트 환경에 맞춰 확인 필요)
+        user_info = await graph_service.get_user(user_id)
+        if user_info:
+            user_email = user_info.get("mail") or user_info.get("userPrincipalName")
+            logger.info(f"🔍 [Graph API] Email 조회 성공: User({user_id}) -> {user_email}")
+    except Exception as ge:
+        logger.warning(f"⚠️ [Graph API] User({user_id}) 이메일 조회 실패: {ge}")
+        
     user_grade = calculate_grade_from_email(user_email, now_utc.year)
 
     if not user_id:
