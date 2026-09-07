@@ -299,6 +299,7 @@ class GraphService:
             f"https://graph.microsoft.com/v1.0/users/{user_id}/events"
             f"?$select=id,subject"
             f"&$filter={filter_query}"
+            f"&$top=50"
         )
 
         try:

@@ -1,6 +1,6 @@
 #app/tasks/scheduler.py
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from app.core.config import settings
@@ -32,6 +32,8 @@ def start_scheduler():
         return
 
     now = now_kst()
+    
+    debug_time = now + timedelta(minutes=5)
 
     # 1. 채널 동기화 (기본 4시간 - 앱 시작 즉시 1회 실행 후 주기적 실행)
     scheduler.add_job(
@@ -39,7 +41,7 @@ def start_scheduler():
         "interval",
         hours=settings.CHANNEL_SYNC_INTERVAL_HOURS,
         id="channel_sync_job",
-        next_run_time=now,  # 서버 구동 즉시 최초 1회 실행
+        next_run_time=debug_time,  # 서버 구동 즉시 최초 1회 실행
         replace_existing=True
     )
 
@@ -57,8 +59,8 @@ def start_scheduler():
     scheduler.add_job(
         send_daily_notice_task,
         "cron",
-        hour=8,
-        minute=0,
+        hour=7,
+        minute=5,
         id="daily_notice_job",
         replace_existing=True
     )
@@ -69,7 +71,7 @@ def start_scheduler():
         "cron",
         day_of_week="sun",
         hour=3,
-        minute=0,
+        minute=5,
         id="lifecycle_job",
         replace_existing=True
     )
