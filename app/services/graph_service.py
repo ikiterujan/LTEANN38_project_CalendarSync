@@ -3,6 +3,8 @@ import logging
 from typing import Optional, Any, Dict, List
 from datetime import datetime, timezone, timedelta
 import httpx
+import asyncio
+
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 
@@ -208,7 +210,14 @@ class GraphService:
             },
             "location": {
                 "displayName": location or ""
-            }
+            },
+            #calendarsync 식별자
+            "singleValueExtendedProperties": [
+                {
+                    "id": "String {fbd4ec16-7f0f-46d2-a9db-f32258a48607} Name CalendarSyncApp",
+                    "value": "CalendarSync_2026"
+                }
+            ]
         }
 
         res = await self._request_with_retry("POST", url, json_payload=payload)
@@ -270,3 +279,59 @@ class GraphService:
 
         res.raise_for_status()
         logger.info(f"[Graph API] User {user_id} 캘린더 일정 삭제 성공 (Event ID: {event_id})")
+        
+    
+    async def delete_user_synced_events(
+        self, 
+        user_id: str, 
+        property_name: str = "CalendarSyncApp", 
+        property_value: str = "CalendarSync_2026"
+    ) -> int:
+        """
+        사용자의 캘린더에서 Extended Property(식별자)가 일치하는 모든 일정을 병렬(gather)로 일괄 삭제합니다.
+        """
+        property_guid = "fbd4ec16-7f0f-46d2-a9db-f32258a48607"
+        prop_id = f"String {{{property_guid}}} Name {property_name}"
+
+        # 1. Extended Property 식별자가 있는 일정만 OData $filter로 조회
+        filter_query = f"singleValueExtendedProperties/any(ep: ep/id eq '{prop_id}' and ep/value eq '{property_value}')"
+        url = (
+            f"https://graph.microsoft.com/v1.0/users/{user_id}/events"
+            f"?$select=id,subject"
+            f"&$filter={filter_query}"
+        )
+
+        try:
+            events_to_delete = await self._get_all_pages(url)
+            
+            if not events_to_delete:
+                logger.info(f"[Graph API] 삭제할 동기화 일정이 없습니다. (User: {user_id})")
+                return 0
+
+            total_count = len(events_to_delete)
+            logger.info(f"[Graph API] User({user_id})의 동기화 일정 {total_count}건 발견. 병렬 삭제 시작...")
+
+            # 2. asyncio.gather로 삭제 태스크들을 병렬로 생성 및 실행
+            # return_exceptions=True를 설정하면 특정 일정 1개가 실패하더라도 나머지는 계속 삭제를 진행합니다.
+            delete_tasks = [
+                self.delete_user_calendar_event(user_id=user_id, event_id=event.get("id"))
+                for event in events_to_delete
+                if event.get("id")
+            ]
+
+            results = await asyncio.gather(*delete_tasks, return_exceptions=True)
+
+            # 3. 삭제 성공/실패 카운트 집계
+            success_count = sum(1 for r in results if not isinstance(r, Exception))
+            failed_count = total_count - success_count
+
+            if failed_count > 0:
+                logger.warning(f"⚠️ [Graph API] User({user_id}) 일정 삭제 완료 (성공: {success_count}건, 실패: {failed_count}건)")
+            else:
+                logger.info(f"✅ [Graph API] User({user_id}) 모든 동기화 일정 삭제 성공 (총 {success_count}건)")
+
+            return success_count
+
+        except Exception as e:
+            logger.error(f"❌ [Graph API] 일정 일괄 삭제 처리 중 에러 (User: {user_id}): {e}", exc_info=True)
+            return 0

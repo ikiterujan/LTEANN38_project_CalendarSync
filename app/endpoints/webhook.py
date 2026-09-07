@@ -43,6 +43,28 @@ def calculate_grade_from_email(email: Optional[str], current_year: int) -> Optio
             return grade
     return None
 
+async def cleanup_user_data(user_id: str, db: Session):
+    """유저가 앱을 삭제/차단했을 때 Graph API 일정 삭제 및 DB 유저 완전 삭제"""
+    try:
+        db_user = db.get(User, user_id)
+        if not db_user:
+            return
+
+        user_email = db_user.email
+        logger.info(f"🗑️ [앱 삭제 감지] User({user_id}) | Email: {user_email} 삭제 절차 시작")
+
+        # 1. MS Graph API를 통해 우리가 등록했던 Extended Property 일정만 깔끔하게 삭제
+        deleted_events = await graph_service.delete_user_synced_events(user_id)
+        logger.info(f"🗑️ [Graph API] {user_email} 유저의 캘린더 일정 {deleted_events}건 삭제 완료")
+
+        # 2. DB 유저 삭제 (cascade로 관련 mapping/logs 함께 삭제)
+        db.delete(db_user)
+        db.commit()
+        logger.info(f"✅ [DB 유저 삭제 완료] User({user_id}) 데이터 완전 제거")
+
+    except Exception as e:
+        db.rollback()
+        logger.error(f"❌ 유저 삭제/정리 중 에러 발생 (User: {user_id}): {e}", exc_info=True)
 
 @router.post("/api/messages")
 async def teams_event_webhook(
@@ -52,6 +74,7 @@ async def teams_event_webhook(
 ):
     """Teams Bot Framework 이벤트 수신 및 lightweight select 기반 유저 처리"""
     data = await request.json()
+    action = data.get("action")
     activity_type = data.get("type")
     now_utc = datetime.now(timezone.utc)
     now_ts = now_utc.timestamp()
@@ -85,6 +108,11 @@ async def teams_event_webhook(
     RECENT_SYNC_REQUESTS[user_id] = now_ts
 
     try:
+        if activity_type == "installationUpdate" and action == "remove":
+            # 백그라운드 태스크로 유저 데이터 정리 실행
+            background_tasks.add_task(cleanup_user_data, user_id, db)
+            return {"status": "ok", "message": "user_cleanup_initiated"}
+        
         if activity_type in ("installationUpdate", "conversationUpdate", "message"):
             # 2. ORM 객체를 세션에 다 올리지 않고 필요한 필드만 select() 실행하여 메모리 경량화
             stmt_user = select(User.id, User.email, User.grade).where(User.id == user_id)

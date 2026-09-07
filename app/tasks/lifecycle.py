@@ -14,26 +14,11 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(me
 
 
 async def run_lifecycle_cleanup_task():
-    """[주 주기 실행] 휴면 계정 비활성화 및 오래된 로그 정리"""
+    """오래된 로그 정리"""
     
     with SessionLocal() as db:
         try:
             now = now_kst()
-
-            # 1. 90일 이상 미활동 유저 일괄 비활성화 (Bulk UPDATE)
-            inactive_threshold = now - timedelta(days=90)
-            
-            stmt_update_dormant = (
-                update(User)
-                .where(
-                    User.is_active == True,
-                    User.last_active_at < inactive_threshold
-                )
-                .values(is_active=False)
-            )
-            
-            result_update = db.execute(stmt_update_dormant)
-            dormant_count = result_update.rowcount
 
             # 2. 180일 이상 지난 오래된 UserSyncLog 일괄 삭제 (Bulk DELETE)
             log_cleanup_threshold = now - timedelta(days=180)
@@ -51,7 +36,6 @@ async def run_lifecycle_cleanup_task():
             
             logger.info(
                 f"✅ 라이프사이클 태스크 완료 "
-                f"(휴면 전환: {dormant_count}명 | 만료 로그 삭제: {deleted_log_count}건)"
             )
 
         except Exception as e:
