@@ -27,18 +27,17 @@ class LLMService:
         """
         
         # 1. ORM 객체 매핑 대신 핀포인트 select 프로젝션 (EncryptedString 자동 복호화 적용됨)
-        stmt = (
-            select(
-                MasterCalendar.id,
-                MasterCalendar.title,
-                MasterCalendar.start_datetime,
-                MasterCalendar.end_datetime,
-                MasterCalendar.location,
-                MasterCalendar.description,
-                MasterCalendar.target_grades,
-            )
-            .where(MasterCalendar.source_channel_id == channel_id)
-        )
+        stmt = select(
+            MasterCalendar.id,
+            MasterCalendar.title,
+            MasterCalendar.start_datetime,
+            MasterCalendar.end_datetime,
+            MasterCalendar.location,
+            MasterCalendar.description,
+            MasterCalendar.grade1,
+            MasterCalendar.grade2,
+            MasterCalendar.grade3,
+        ).where(MasterCalendar.source_channel_id == channel_id)
 
         rows = db.execute(stmt).mappings().all()
 
@@ -46,12 +45,15 @@ class LLMService:
         for row in rows:
             # datetime 필드 isoformat 변환 처리 및 Pydantic 매핑
             row_dict = dict(row)
+            target_grades = []
+            if row_dict.pop("grade1", False): target_grades.append(1)
+            if row_dict.pop("grade2", False): target_grades.append(2)
+            if row_dict.pop("grade3", False): target_grades.append(3)
+            row_dict["target_grades"] = target_grades
             if row_dict.get("start_datetime"):
                 row_dict["start_datetime"] = row_dict["start_datetime"].isoformat()
             if row_dict.get("end_datetime"):
                 row_dict["end_datetime"] = row_dict["end_datetime"].isoformat()
-            if row_dict.get("target_grades") is None:
-                row_dict["target_grades"] = []
 
             # MasterScheduleContext (pydantic v2 model_config 적용됨) 변환
             context_obj = MasterScheduleContext.model_validate(row_dict)
