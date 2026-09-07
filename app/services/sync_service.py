@@ -1,4 +1,3 @@
-#app/services/sync_service.py
 import logging
 import hashlib
 import asyncio
@@ -13,7 +12,7 @@ from app.schemas.llm_schema import ScheduleAction, RAGAnalysisResult
 from app.services.graph_service import GraphService
 
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
+
 
 def _is_target_user(user_grade: Optional[str], target_grades: List[int]) -> bool:
     if not target_grades:  # target_grades가 비어있으면 전체 학년 대상
@@ -21,10 +20,10 @@ def _is_target_user(user_grade: Optional[str], target_grades: List[int]) -> bool
     if not user_grade:
         return False
     try:
-        # user_grade가 문자열 '1'로 올 경우 int 변환하여 비교
         return int(user_grade) in target_grades
     except ValueError:
         return False
+
 
 class SyncService:
     def __init__(self, graph_service: GraphService):
@@ -35,7 +34,6 @@ class SyncService:
         raw_str = f"{action.title}|{action.start_datetime}|{action.end_datetime}|{action.location}|{action.description}"
         return hashlib.sha256(raw_str.encode("utf-8")).hexdigest()
 
-        
     async def process_rag_actions(
         self,
         db: Session,
@@ -45,7 +43,6 @@ class SyncService:
     ):
         """RAG 분석 결과(C/U/D)를 순회하며 MasterCalendar DB 변경 및 Fan-out 실행"""
         
-        # 1. 메모리 최적화: ORM 전체 객체 대신 (user_id, grade) 튜플 리스트만 select 프로젝션
         stmt = (
             select(User.id, User.grade)
             .join(UserChannelMapping, User.id == UserChannelMapping.user_id)
@@ -85,12 +82,11 @@ class SyncService:
         description: Optional[str],
         target_grades: List[int]
     ) -> Optional[UserSyncLog]:
-        # 대상 학년 필터링
-        if target_grades and user_grade not in target_grades:
+        # 수정: _is_target_user 헬퍼 함수 활용 (문자열/정수 타입 변환 호환성 보장)
+        if not _is_target_user(user_grade, target_grades):
             return None 
         
         try:
-            # MS Graph API 호출 (EncryptedString 자동 복호화에 의해 전달받은 평문 전달)
             outlook_event_id = await self.graph.create_user_calendar_event(
                 user_id=user_id,
                 title=title,
@@ -100,7 +96,6 @@ class SyncService:
                 description=description
             )
 
-            # DB 등록용 SyncLog 객체 생성 및 반환
             return UserSyncLog(
                 user_id=user_id,
                 master_schedule_id=master_item_id,
@@ -116,12 +111,10 @@ class SyncService:
         channel_id: str,
         raw_message_id: str,
         action: ScheduleAction,
-        target_users: List[tuple]  # [(user_id, grade), ...]
+        target_users: List[tuple]
     ):
-        """[CREATE] MasterCalendar 생성 (EncryptedString 자동 암호화) -> asyncio.gather 병렬 Fan-out"""
         content_hash = self._generate_content_hash(action)
 
-        # 0. 동일 채널 내 동일 content_hash 존재 시 중복 생성 방지 (LLM 오판 대비 최종 방어선)
         stmt = select(MasterCalendar.id).where(
             MasterCalendar.source_channel_id == channel_id,
             MasterCalendar.content_hash == content_hash
@@ -132,7 +125,6 @@ class SyncService:
             logger.info(f"[CREATE SKIP] 동일 content_hash의 일정이 이미 존재함 (기존 ID: {duplicate_id})")
             return
 
-        # 1. MasterCalendar 생성 (TypeDecorator EncryptedString이 DB 저장 시 자동 암호화)
         master_item = MasterCalendar(
             source_channel_id=channel_id,
             raw_message_id=raw_message_id,
@@ -148,11 +140,10 @@ class SyncService:
         )
         
         db.add(master_item)
-        db.flush()  # master_item.id 채번
+        db.flush()
 
         logger.info(f"[CREATE MasterCalendar] ID: {master_item.id}")
 
-        # 2. asyncio.gather용 파라미터 값 추출 (TypeDecorator로 자동 복호화된 평문 상태)
         master_id = master_item.id
         title = master_item.title
         start_dt = master_item.start_datetime
@@ -160,7 +151,6 @@ class SyncService:
         location = master_item.location
         description = master_item.description
 
-        # 3. asyncio.gather로 병렬 API 호출 실행 (DB 세션 객체 미전달 -> Thread/Async Safe)
         tasks = [
             self._create_single_user_event(
                 u_id, u_grade, master_id, title, start_dt, end_dt, location, description, action.target_grades
@@ -169,12 +159,11 @@ class SyncService:
         ]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        # 4. 성공한 로그들 메인 스레드 DB 세션에서 일괄 저장 (예외/None 결과는 제외)
         valid_logs = [log for log in results if isinstance(log, UserSyncLog)]
         if valid_logs:
             db.add_all(valid_logs)
         db.commit()
-        db.expunge_all()  # 세션 캐시 초기화 (Stash 방지)
+        db.expunge_all()
 
     # ------------------------------------------------------------------
     # [UPDATE] 단일 유저 캘린더 수정/신규생성 비동기 처리
@@ -190,13 +179,13 @@ class SyncService:
         end_dt: datetime,
         location: Optional[str],
         description: Optional[str],
-        target_grades: List[str]
+        target_grades: List[int]  # 수정: List[str] -> List[int]
     ) -> Optional[UserSyncLog]:
-        is_target_grade = not target_grades or (user_grade in target_grades)
+        # 수정: _is_target_user 헬퍼 함수 활용
+        is_target_grade = _is_target_user(user_grade, target_grades)
 
         if is_target_grade:
             if existing_event_id:
-                # 기존 유저 -> PATCH (수정)
                 try:
                     await self.graph.update_user_calendar_event(
                         user_id=user_id,
@@ -211,7 +200,6 @@ class SyncService:
                     logger.error(f"User {user_id} 캘린더 UPDATE Fan-out 실패: {e}")
                 return None
             else:
-                # 학년 변경 등으로 새로 대상이 된 유저 -> POST (신규 생성)
                 try:
                     outlook_event_id = await self.graph.create_user_calendar_event(
                         user_id=user_id,
@@ -232,7 +220,6 @@ class SyncService:
         return None
 
     async def _handle_update(self, db: Session, action: ScheduleAction, target_users: List[tuple]):
-        """[UPDATE] 마스터 일정 수정 (EncryptedString 자동 암호화) -> 핀포인트 병렬 Update/Insert"""
         if not action.master_schedule_id:
             logger.warning("[UPDATE] master_schedule_id 누락으로 스킵")
             return
@@ -242,16 +229,19 @@ class SyncService:
             logger.error(f"[UPDATE] ID {action.master_schedule_id} 마스터 일정을 찾을 수 없음")
             return
 
-        # 1. MasterCalendar 정보 업데이트 (EncryptedString에 의해 DB Commit 시 자동 암호화)
+        # 1. MasterCalendar 정보 업데이트
         master_item.title = action.title
         master_item.start_datetime = datetime.fromisoformat(action.start_datetime)
         master_item.end_datetime = datetime.fromisoformat(action.end_datetime)
         master_item.location = action.location
         master_item.description = action.description
-        master_item.target_grades = action.target_grades
+        # 수정: target_grades 가상 속성 제거 -> grade1~3 매핑으로 변경
+        master_item.grade1 = (1 in action.target_grades)
+        master_item.grade2 = (2 in action.target_grades)
+        master_item.grade3 = (3 in action.target_grades)
         master_item.content_hash = self._generate_content_hash(action)
 
-        # 2. 기존 SyncLog 맵핑 (user_id -> outlook_event_id)
+        # 2. 기존 SyncLog 맵핑
         stmt = select(UserSyncLog.user_id, UserSyncLog.outlook_event_id).where(
             UserSyncLog.master_schedule_id == master_item.id
         )
@@ -269,7 +259,7 @@ class SyncService:
         ]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        # 4. 새로 생성된 UserSyncLog만 추가 저장 (예외/None 결과는 제외)
+        # 4. 새로 생성된 UserSyncLog 추가 저장
         new_logs = [log for log in results if isinstance(log, UserSyncLog)]
         if new_logs:
             db.add_all(new_logs)
@@ -290,7 +280,6 @@ class SyncService:
             logger.error(f"User {user_id} 캘린더 DELETE Fan-out 실패: {e}")
 
     async def _handle_delete(self, db: Session, action: ScheduleAction):
-        """[DELETE] 마스터 일정 및 핀포인트 유저 Outlook 이벤트 병렬 삭제"""
         if not action.master_schedule_id:
             logger.warning("[DELETE] master_schedule_id 누락으로 스킵")
             return
@@ -300,13 +289,11 @@ class SyncService:
             logger.error(f"[DELETE] ID {action.master_schedule_id} 마스터 일정을 찾을 수 없음")
             return
 
-        # 1. 기존 동기화 로그 전체 조회 (user_id, outlook_event_id)
         stmt = select(UserSyncLog.user_id, UserSyncLog.outlook_event_id).where(
             UserSyncLog.master_schedule_id == master_item.id
         )
         sync_logs = db.execute(stmt).all()
 
-        # 2. asyncio.gather로 Graph API DELETE 호출 병렬화
         tasks = [
             self._delete_single_user_event(u_id, evt_id)
             for u_id, evt_id in sync_logs if evt_id
@@ -314,7 +301,6 @@ class SyncService:
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
 
-        # 3. MasterCalendar DB 삭제 (CASCADE 설정으로 UserSyncLog도 자동 삭제됨)
         db.delete(master_item)
         db.commit()
         db.expunge_all()

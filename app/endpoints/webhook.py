@@ -85,6 +85,13 @@ async def teams_event_webhook(
     user_conversation_id = user_conversation.get("id")
     service_url = data.get("serviceUrl")
 
+    # 1. 중복 이벤트 검증
+    last_sync_time = RECENT_SYNC_REQUESTS.get(user_id, 0)
+    if now_ts - last_sync_time < settings.DUPLICATE_WEBHOOK_DEBOUNCE_SECONDS:
+        return {"status": "ok", "message": "duplicate_event_ignored"}
+    
+    RECENT_SYNC_REQUESTS[user_id] = now_ts
+    
     # 이메일 및 학년 계산
     try:
         # graph_service의 유저 정보 조회 메서드 호출 (메서드명은 프로젝트 환경에 맞춰 확인 필요)
@@ -99,13 +106,6 @@ async def teams_event_webhook(
 
     if not user_id:
         return {"status": "ok", "message": "no_user_id_in_activity"}
-
-    # 1. 중복 이벤트 검증
-    last_sync_time = RECENT_SYNC_REQUESTS.get(user_id, 0)
-    if now_ts - last_sync_time < settings.DUPLICATE_WEBHOOK_DEBOUNCE_SECONDS:
-        return {"status": "ok", "message": "duplicate_event_ignored"}
-    
-    RECENT_SYNC_REQUESTS[user_id] = now_ts
 
     try:
         if activity_type == "installationUpdate" and action == "remove":

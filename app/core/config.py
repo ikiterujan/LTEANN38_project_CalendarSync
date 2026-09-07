@@ -7,7 +7,6 @@ class Settings(BaseSettings):
     # App General Config
     APP_NAME: str = "Teams-Outlook Sync Engine"
     ENV: str = "development"
-    DEBUG: bool = True
     
     # DB 초기화 및 재설정 플래그
     RESET_DB: bool = False
@@ -34,8 +33,8 @@ class Settings(BaseSettings):
 
     # Sync Pipeline Schedules
     CHANNEL_SYNC_INTERVAL_HOURS: int = 4
-    MESSAGE_SYNC_INTERVAL_HOURS: int = 1
     MASTER_SYNC_INTERVAL_HOURS: int = 2
+    MESSAGE_SYNC_INTERVAL_HOURS: int = 1
     MESSAGE_SYNC_LOOKBACK_BUFFER_MINUTES: int = 30
     
     DUPLICATE_WEBHOOK_DEBOUNCE_SECONDS: int = 30
