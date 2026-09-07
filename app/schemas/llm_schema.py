@@ -1,6 +1,6 @@
 #app/schemas/llm_schema.py
 from typing import List, Optional, Literal
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class ScheduleAction(BaseModel):
@@ -15,6 +15,13 @@ class ScheduleAction(BaseModel):
     title: str = Field(..., description="일정 제목")
     start_datetime: str = Field(..., description="시작 일시 (ISO 8601 형식: YYYY-MM-DDTHH:MM:SS)")
     end_datetime: str = Field(..., description="종료 일시 (ISO 8601 형식: YYYY-MM-DDTHH:MM:SS)")
+    
+    @field_validator('start_datetime', 'end_datetime', mode='before')
+    def empty_string_to_none(cls, v):
+        # 빈 문자열("")이나 공백 문자열이 들어오면 None으로 변환
+        if isinstance(v, str) and not v.strip():
+            return None
+        return v
     
     # DB의 EncryptedString 컬럼 매핑 시 None 및 빈 값 방어
     location: Optional[str] = Field(None, description="장소 (없을 시 None)")
