@@ -164,14 +164,14 @@ class GraphService:
         cutoff = datetime.now(timezone.utc) - timedelta(minutes=since_minutes)
         recent_messages = []
         for msg in messages:
-            if msg.get("messageType") != "message" or msg.get("deletedDateTime"):
-                continue
+            # if msg.get("messageType") != "message" or msg.get("deletedDateTime"):
+            #     continue
 
-            last_modified = msg.get("lastModifiedDateTime") or msg.get("createdDateTime")
-            if last_modified:
-                msg_dt = datetime.fromisoformat(last_modified.replace("Z", "+00:00"))
-                if msg_dt < cutoff:
-                    continue
+            # last_modified = msg.get("lastModifiedDateTime") or msg.get("createdDateTime")
+            # if last_modified:
+            #     msg_dt = datetime.fromisoformat(last_modified.replace("Z", "+00:00"))
+            #     if msg_dt < cutoff:
+            #         continue
 
             recent_messages.append(msg)
 
