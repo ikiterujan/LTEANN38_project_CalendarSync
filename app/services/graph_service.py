@@ -67,6 +67,31 @@ class GraphService:
 
         return res
 
+    async def get_user(self, user_id: str) -> Optional[Dict[str, Any]]:
+        """
+        [GET] 특정 단일 사용자 정보 조회 (mail, userPrincipalName, displayName 등)
+        webhook.py 등에서 user_id(aadObjectId) 기반으로 이메일을 즉시 추출할 때 사용합니다.
+        """
+        url = f"https://graph.microsoft.com/v1.0/users/{user_id}?$select=id,mail,userPrincipalName,displayName"
+
+        try:
+            res = await self._request_with_retry("GET", url)
+            if res.status_code == 404:
+                logger.warning(f"[Graph API] 존재하지 않는 사용자 ID: {user_id}")
+                return None
+            
+            res.raise_for_status()
+            user_data = res.json()
+            logger.info(f"[Graph API] User {user_id} 정보 조회 성공 (UPN: {user_data.get('userPrincipalName')})")
+            return user_data
+
+        except httpx.HTTPStatusError as e:
+            logger.error(f"[Graph API] User {user_id} 정보 조회 실패: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"[Graph API] User {user_id} 조회 중 알 수 없는 에러: {e}")
+            return None
+        
     async def _get_all_pages(self, url: str) -> List[Dict[str, Any]]:
         """@odata.nextLink 페이지네이션을 모두 따라가며 value 배열을 누적 반환"""
         items: List[Dict[str, Any]] = []
