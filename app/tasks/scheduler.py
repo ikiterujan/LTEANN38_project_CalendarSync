@@ -9,6 +9,7 @@ from app.tasks.channel_sync import sync_user_channels_task
 from app.tasks.message_sync import sync_channel_messages_task
 from app.tasks.daily_notice import send_daily_notice_task
 from app.tasks.lifecycle import run_lifecycle_cleanup_task
+from app.tasks.master_calendar import sync_master_calendar_task
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
@@ -33,7 +34,8 @@ def start_scheduler():
 
     now = now_kst()
     
-    debug_time = now + timedelta(minutes=5)
+    debug_time1 = now + timedelta(minutes=5)
+    debug_time2 = now + timedelta(minutes=10)
 
     # 1. 채널 동기화 (기본 4시간 - 앱 시작 즉시 1회 실행 후 주기적 실행)
     scheduler.add_job(
@@ -41,10 +43,19 @@ def start_scheduler():
         "interval",
         hours=settings.CHANNEL_SYNC_INTERVAL_HOURS,
         id="channel_sync_job",
-        next_run_time=debug_time,  # 서버 구동 즉시 최초 1회 실행
+        next_run_time=debug_time1,  # 서버 구동 즉시 최초 1회 실행
         replace_existing=True
     )
 
+    scheduler.add_job(
+        sync_master_calendar_task,
+        "interval",
+        hours = settings.MASTER_SYNC_INTERVAL_HOURS,  # 또는 settings.MASTER_SYNC_INTERVAL_MINUTES
+        id="master_calendar_sync_job",
+        next_run_time=debug_time2,
+        replace_existing=True
+    )
+    
     # 2. 메시지 수집 및 일정 C/U/D 파이프라인 (기본 1시간 - 앱 시작 즉시 1회 실행)
     scheduler.add_job(
         sync_channel_messages_task,
