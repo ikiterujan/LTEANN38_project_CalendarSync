@@ -12,6 +12,8 @@ class ScheduleAction(BaseModel):
         None, 
         description="UPDATE 또는 DELETE일 경우 대상 MasterCalendar ID (CREATE/SKIP일 경우 None)"
     )
+    
+    subject: Optional[str] = Field(default=None, description="과목/카테고리 (예: 수학, 국어, 행정, 반모임 등)")
     title: str = Field(..., description="일정 제목")
     start_datetime: str = Field(..., description="시작 일시 (ISO 8601 형식: YYYY-MM-DDTHH:MM:SS)")
     end_datetime: str = Field(..., description="종료 일시 (ISO 8601 형식: YYYY-MM-DDTHH:MM:SS)")

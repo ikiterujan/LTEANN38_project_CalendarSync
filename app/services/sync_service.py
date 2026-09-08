@@ -10,12 +10,13 @@ from app.models.domain import User, UserChannelMapping
 from app.models.master_calendar import MasterCalendar, UserSyncLog
 from app.schemas.llm_schema import ScheduleAction, RAGAnalysisResult
 from app.services.graph_service import GraphService
+from app.utils.teams import build_teams_message_link
 
 logger = logging.getLogger(__name__)
 
 
 def _is_target_user(user_grade: Optional[str], target_grades: List[int]) -> bool:
-    if not target_grades:  # target_grades가 비어있으면 전체 학년 대상
+    if not target_grades:
         return True
     if not user_grade:
         return False
@@ -25,24 +26,52 @@ def _is_target_user(user_grade: Optional[str], target_grades: List[int]) -> bool
         return False
 
 
+def _parse_datetime(dt_str: Optional[str]) -> Optional[datetime]:
+    if not dt_str or not dt_str.strip():
+        return None
+    try:
+        return datetime.fromisoformat(dt_str)
+    except ValueError:
+        logger.warning(f"잘못된 날짜 포맷: '{dt_str}'")
+        return None
+
+
+def _format_title(subject: Optional[str], title: str) -> str:
+    """[방법 B] [Subject] Title 포맷팅"""
+    if subject and subject.strip():
+        clean_subj = subject.strip().replace("[", "").replace("]", "")
+        return f"[{clean_subj}] {title.strip()}"
+    return title.strip()
+
+
+def _build_full_description(description: Optional[str], teams_link: Optional[str]) -> str:
+    """본문 하단에 Teams 원본 메시지 링크 결합"""
+    desc_parts = []
+    if description and description.strip():
+        desc_parts.append(description.strip())
+    
+    if teams_link:
+        desc_parts.append(f"\n\n🔗 [Teams 원본 게시물 바로가기]({teams_link})")
+        
+    return "".join(desc_parts)
+
+
 class SyncService:
     def __init__(self, graph_service: GraphService):
         self.graph = graph_service
 
-    def _generate_content_hash(self, action: ScheduleAction) -> str:
-        """일정 중복 및 변경 검증용 SHA-256 해시 생성"""
-        raw_str = f"{action.title}|{action.start_datetime}|{action.end_datetime}|{action.location}|{action.description}"
+    def _generate_content_hash(self, formatted_title: str, action: ScheduleAction) -> str:
+        raw_str = f"{formatted_title}|{action.start_datetime}|{action.end_datetime}|{action.location}|{action.description}"
         return hashlib.sha256(raw_str.encode("utf-8")).hexdigest()
 
     async def process_rag_actions(
         self,
         db: Session,
+        team_id: str,
         channel_id: str,
         raw_message_id: str,
         rag_result: RAGAnalysisResult
     ):
-        """RAG 분석 결과(C/U/D)를 순회하며 MasterCalendar DB 변경 및 Fan-out 실행"""
-        
         stmt = (
             select(User.id, User.grade)
             .join(UserChannelMapping, User.id == UserChannelMapping.user_id)
@@ -51,7 +80,10 @@ class SyncService:
                 User.is_active == True
             )
         )
-        channel_users = db.execute(stmt).all()  # List[RowTuple(id, grade)]
+        channel_users = db.execute(stmt).all()
+
+        # Teams Deep Link 생성
+        teams_link = build_teams_message_link(team_id, channel_id, raw_message_id)
 
         for action in rag_result.actions:
             if action.action == "SKIP":
@@ -59,41 +91,42 @@ class SyncService:
                 continue
 
             elif action.action == "CREATE":
-                await self._handle_create(db, channel_id, raw_message_id, action, channel_users)
+                await self._handle_create(
+                    db, channel_id, raw_message_id, teams_link, action, channel_users
+                )
 
             elif action.action == "UPDATE":
-                await self._handle_update(db, action, channel_users)
+                await self._handle_update(db, teams_link, action, channel_users)
 
             elif action.action == "DELETE":
                 await self._handle_delete(db, action)
 
     # ------------------------------------------------------------------
-    # [CREATE] 단일 유저 캘린더 생성 비동기 처리
+    # [CREATE]
     # ------------------------------------------------------------------
     async def _create_single_user_event(
         self,
         user_id: str,
         user_grade: Optional[str],
         master_item_id: str,
-        title: str,
+        formatted_title: str,
         start_dt: datetime,
         end_dt: datetime,
         location: Optional[str],
-        description: Optional[str],
+        full_description: Optional[str],
         target_grades: List[int]
     ) -> Optional[UserSyncLog]:
-        # 수정: _is_target_user 헬퍼 함수 활용 (문자열/정수 타입 변환 호환성 보장)
         if not _is_target_user(user_grade, target_grades):
             return None 
         
         try:
             outlook_event_id = await self.graph.create_user_calendar_event(
                 user_id=user_id,
-                title=title,
+                title=formatted_title,
                 start_dt=start_dt,
                 end_dt=end_dt,
                 location=location,
-                description=description
+                description=full_description
             )
 
             return UserSyncLog(
@@ -110,10 +143,20 @@ class SyncService:
         db: Session,
         channel_id: str,
         raw_message_id: str,
+        teams_link: str,
         action: ScheduleAction,
         target_users: List[tuple]
     ):
-        content_hash = self._generate_content_hash(action)
+        start_dt = _parse_datetime(action.start_datetime)
+        end_dt = _parse_datetime(action.end_datetime)
+
+        if not start_dt or not end_dt:
+            logger.warning(f"[CREATE SKIP] 유효하지 않은 날짜 (start: '{action.start_datetime}', end: '{action.end_datetime}')")
+            return
+
+        formatted_title = _format_title(action.subject, action.title)
+        full_description = _build_full_description(action.description, teams_link)
+        content_hash = self._generate_content_hash(formatted_title, action)
 
         stmt = select(MasterCalendar.id).where(
             MasterCalendar.source_channel_id == channel_id,
@@ -122,17 +165,17 @@ class SyncService:
         duplicate_id = db.execute(stmt).scalar_one_or_none()
 
         if duplicate_id:
-            logger.info(f"[CREATE SKIP] 동일 content_hash의 일정이 이미 존재함 (기존 ID: {duplicate_id})")
+            logger.info(f"[CREATE SKIP] 중복 일정 존재 (ID: {duplicate_id})")
             return
 
         master_item = MasterCalendar(
             source_channel_id=channel_id,
             raw_message_id=raw_message_id,
-            title=action.title,
-            start_datetime=datetime.fromisoformat(action.start_datetime),
-            end_datetime=datetime.fromisoformat(action.end_datetime),
+            title=formatted_title,
+            start_datetime=start_dt,
+            end_datetime=end_dt,
             location=action.location,
-            description=action.description,
+            description=full_description,
             grade1=(1 in action.target_grades),
             grade2=(2 in action.target_grades),
             grade3=(3 in action.target_grades),
@@ -142,18 +185,10 @@ class SyncService:
         db.add(master_item)
         db.flush()
 
-        logger.info(f"[CREATE MasterCalendar] ID: {master_item.id}")
-
-        master_id = master_item.id
-        title = master_item.title
-        start_dt = master_item.start_datetime
-        end_dt = master_item.end_datetime
-        location = master_item.location
-        description = master_item.description
-
         tasks = [
             self._create_single_user_event(
-                u_id, u_grade, master_id, title, start_dt, end_dt, location, description, action.target_grades
+                u_id, u_grade, master_item.id, formatted_title, start_dt, end_dt,
+                action.location, full_description, action.target_grades
             )
             for u_id, u_grade in target_users
         ]
@@ -166,7 +201,7 @@ class SyncService:
         db.expunge_all()
 
     # ------------------------------------------------------------------
-    # [UPDATE] 단일 유저 캘린더 수정/신규생성 비동기 처리
+    # [UPDATE]
     # ------------------------------------------------------------------
     async def _update_single_user_event(
         self,
@@ -174,27 +209,24 @@ class SyncService:
         user_grade: Optional[str],
         master_id: str,
         existing_event_id: Optional[str],
-        title: str,
+        formatted_title: str,
         start_dt: datetime,
         end_dt: datetime,
         location: Optional[str],
-        description: Optional[str],
-        target_grades: List[int]  # 수정: List[str] -> List[int]
+        full_description: Optional[str],
+        target_grades: List[int]
     ) -> Optional[UserSyncLog]:
-        # 수정: _is_target_user 헬퍼 함수 활용
-        is_target_grade = _is_target_user(user_grade, target_grades)
-
-        if is_target_grade:
+        if _is_target_user(user_grade, target_grades):
             if existing_event_id:
                 try:
                     await self.graph.update_user_calendar_event(
                         user_id=user_id,
                         event_id=existing_event_id,
-                        title=title,
+                        title=formatted_title,
                         start_dt=start_dt,
                         end_dt=end_dt,
                         location=location,
-                        description=description
+                        description=full_description
                     )
                 except Exception as e:
                     logger.error(f"User {user_id} 캘린더 UPDATE Fan-out 실패: {e}")
@@ -203,11 +235,11 @@ class SyncService:
                 try:
                     outlook_event_id = await self.graph.create_user_calendar_event(
                         user_id=user_id,
-                        title=title,
+                        title=formatted_title,
                         start_dt=start_dt,
                         end_dt=end_dt,
                         location=location,
-                        description=description
+                        description=full_description
                     )
                     return UserSyncLog(
                         user_id=user_id,
@@ -219,47 +251,58 @@ class SyncService:
                     return None
         return None
 
-    async def _handle_update(self, db: Session, action: ScheduleAction, target_users: List[tuple]):
+    async def _handle_update(
+        self,
+        db: Session,
+        teams_link: str,
+        action: ScheduleAction,
+        target_users: List[tuple]
+    ):
         if not action.master_schedule_id:
-            logger.warning("[UPDATE] master_schedule_id 누락으로 스킵")
+            logger.warning("[UPDATE] master_schedule_id 누락 스킵")
             return
 
         master_item = db.get(MasterCalendar, action.master_schedule_id)
         if not master_item:
-            logger.error(f"[UPDATE] ID {action.master_schedule_id} 마스터 일정을 찾을 수 없음")
+            logger.error(f"[UPDATE] ID {action.master_schedule_id} 마스터 일정 없음")
             return
 
-        # 1. MasterCalendar 정보 업데이트
-        master_item.title = action.title
-        master_item.start_datetime = datetime.fromisoformat(action.start_datetime)
-        master_item.end_datetime = datetime.fromisoformat(action.end_datetime)
+        start_dt = _parse_datetime(action.start_datetime)
+        end_dt = _parse_datetime(action.end_datetime)
+
+        if not start_dt or not end_dt:
+            logger.warning(f"[UPDATE SKIP] 유효하지 않은 날짜")
+            return
+
+        formatted_title = _format_title(action.subject, action.title)
+        full_description = _build_full_description(action.description, teams_link)
+
+        master_item.title = formatted_title
+        master_item.start_datetime = start_dt
+        master_item.end_datetime = end_dt
         master_item.location = action.location
-        master_item.description = action.description
-        # 수정: target_grades 가상 속성 제거 -> grade1~3 매핑으로 변경
+        master_item.description = full_description
         master_item.grade1 = (1 in action.target_grades)
         master_item.grade2 = (2 in action.target_grades)
         master_item.grade3 = (3 in action.target_grades)
-        master_item.content_hash = self._generate_content_hash(action)
+        master_item.content_hash = self._generate_content_hash(formatted_title, action)
 
-        # 2. 기존 SyncLog 맵핑
         stmt = select(UserSyncLog.user_id, UserSyncLog.outlook_event_id).where(
             UserSyncLog.master_schedule_id == master_item.id
         )
         existing_logs = db.execute(stmt).all()
         log_map = {u_id: evt_id for u_id, evt_id in existing_logs}
 
-        # 3. asyncio.gather 병렬 수정 처리
         tasks = [
             self._update_single_user_event(
                 u_id, u_grade, master_item.id, log_map.get(u_id),
-                master_item.title, master_item.start_datetime, master_item.end_datetime,
-                master_item.location, master_item.description, action.target_grades
+                formatted_title, start_dt, end_dt, action.location,
+                full_description, action.target_grades
             )
             for u_id, u_grade in target_users
         ]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        # 4. 새로 생성된 UserSyncLog 추가 저장
         new_logs = [log for log in results if isinstance(log, UserSyncLog)]
         if new_logs:
             db.add_all(new_logs)
@@ -268,7 +311,7 @@ class SyncService:
         db.expunge_all()
 
     # ------------------------------------------------------------------
-    # [DELETE] 마스터 일정 삭제 및 병렬 삭제 Fan-out
+    # [DELETE]
     # ------------------------------------------------------------------
     async def _delete_single_user_event(self, user_id: str, outlook_event_id: str):
         try:
@@ -281,12 +324,12 @@ class SyncService:
 
     async def _handle_delete(self, db: Session, action: ScheduleAction):
         if not action.master_schedule_id:
-            logger.warning("[DELETE] master_schedule_id 누락으로 스킵")
+            logger.warning("[DELETE] master_schedule_id 누락 스킵")
             return
 
         master_item = db.get(MasterCalendar, action.master_schedule_id)
         if not master_item:
-            logger.error(f"[DELETE] ID {action.master_schedule_id} 마스터 일정을 찾을 수 없음")
+            logger.error(f"[DELETE] ID {action.master_schedule_id} 마스터 일정 없음")
             return
 
         stmt = select(UserSyncLog.user_id, UserSyncLog.outlook_event_id).where(
@@ -304,4 +347,4 @@ class SyncService:
         db.delete(master_item)
         db.commit()
         db.expunge_all()
-        logger.info(f"[DELETE MasterCalendar 완료] ID: {action.master_schedule_id}")
+        logger.info(f"[DELETE 마스터 일정 완료] ID: {action.master_schedule_id}")

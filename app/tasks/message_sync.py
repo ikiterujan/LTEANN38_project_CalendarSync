@@ -49,6 +49,7 @@ async def _process_single_channel_messages(channel_id: str, team_id: str):
                 # 2. MasterCalendar DB 반영 및 Fan-out 실행
                 await sync_service.process_rag_actions(
                     db=db,
+                    team_id=team_id,
                     channel_id=channel_id,
                     raw_message_id=msg["id"],
                     rag_result=rag_result
