@@ -55,6 +55,50 @@ def _build_full_description(description: Optional[str], teams_link: Optional[str
         
     return "".join(desc_parts)
 
+def _split_long_term_actions(actions: List[ScheduleAction]) -> List[ScheduleAction]:
+    """
+    8일 이상 지속되는 장기 일정을 [#시작], [#종료] 2개의 ScheduleAction 객체로 분할합니다.
+    """
+    processed_actions = []
+
+    for action in actions:
+        # CREATE 동작이 아니거나, 날짜가 없는 경우 그대로 유지
+        if action.action != "CREATE" or not action.start_datetime or not action.end_datetime:
+            processed_actions.append(action)
+            continue
+
+        start_dt = _parse_datetime(action.start_datetime)
+        end_dt = _parse_datetime(action.end_datetime)
+
+        if not start_dt or not end_dt:
+            processed_actions.append(action)
+            continue
+
+        # 날짜 차이 계산 (일 단위)
+        day_diff = (end_dt.date() - start_dt.date()).days
+
+        # 8일 이상 지속되는 장기 기간 일정인 경우 2개로 분할
+        if day_diff >= 8:
+            # 1) 시작일 당일 객체 (#시작)
+            start_action = action.model_copy(deep=True)
+            start_action.title = f"{action.title} [#시작]"
+            start_action.start_datetime = f"{start_dt.strftime('%Y-%m-%d')}T00:00:00"
+            start_action.end_datetime = f"{start_dt.strftime('%Y-%m-%d')}T23:59:00"
+            processed_actions.append(start_action)
+
+            # 2) 종료일 당일 객체 (#종료)
+            end_action = action.model_copy(deep=True)
+            end_action.title = f"{action.title} [#종료]"
+            end_action.start_datetime = f"{end_dt.strftime('%Y-%m-%d')}T00:00:00"
+            end_action.end_datetime = f"{end_dt.strftime('%Y-%m-%d')}T23:59:00"
+            processed_actions.append(end_action)
+
+            logger.info(f"[LONG-TERM SPLIT] '{action.title}' ({day_diff}일) -> [#시작], [#종료] 분할 완료")
+        else:
+            # 7일 이하 단기/당일 일정은 그대로 유지
+            processed_actions.append(action)
+
+    return processed_actions
 
 class SyncService:
     def __init__(self, graph_service: GraphService):
@@ -85,7 +129,9 @@ class SyncService:
         # Teams Deep Link 생성
         teams_link = build_teams_message_link(team_id, channel_id, raw_message_id)
 
-        for action in rag_result.actions:
+        actions_to_process = _split_long_term_actions(rag_result.actions)
+        
+        for action in actions_to_process:
             if action.action == "SKIP":
                 logger.info(f"[SKIP] 사유: {action.reason}")
                 continue
