@@ -15,8 +15,8 @@ class ScheduleAction(BaseModel):
     
     subject: Optional[str] = Field(default=None, description="과목/카테고리 (예: 수학, 국어, 행정, 반모임 등)")
     title: str = Field(..., description="일정 제목")
-    start_datetime: str = Field(..., description="시작 일시 (ISO 8601 형식: YYYY-MM-DDTHH:MM:SS)")
-    end_datetime: str = Field(..., description="종료 일시 (ISO 8601 형식: YYYY-MM-DDTHH:MM:SS)")
+    start_datetime: Optional[str] = Field(..., description="시작 일시 (ISO 8601 형식: YYYY-MM-DDTHH:MM:SS)")
+    end_datetime: Optional[str] = Field(..., description="종료 일시 (ISO 8601 형식: YYYY-MM-DDTHH:MM:SS)")
     
     @field_validator('start_datetime', 'end_datetime', mode='before')
     def empty_string_to_none(cls, v):
