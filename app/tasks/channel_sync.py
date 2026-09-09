@@ -21,7 +21,10 @@ async def _sync_single_user_channels(user_id: str) -> Tuple[str, List[Dict[str, 
         joined_channels = await graph_service.get_user_joined_channels(user_id)
         return user_id, joined_channels
     except Exception as e:
+        '''
         logger.error(f"User {user_id} 채널 조회 실패: {e}")
+        '''
+        logger.error(f"채널 조회 실패: {e}")
         return user_id, []
 
 
@@ -35,7 +38,7 @@ async def sync_user_channels_task():
             active_user_ids = db.execute(stmt_users).scalars().all()
 
             if not active_user_ids:
-                logger.info("ℹ️ 동기화할 활성 유저가 없습니다.")
+                logger.info("동기화할 활성 유저가 없습니다.")
                 return
 
             # 2. asyncio.gather로 Graph API 요청 병렬 실행 (순수 user_id만 전달)
@@ -112,7 +115,7 @@ async def sync_user_channels_task():
             db.expunge_all()  # 세션 캐시 즉시 비우기 (메모리 Stash 차단)
             
             logger.info(
-                f"✅ 채널 동기화 완료 "
+                f"채널 동기화 완료 "
                 f"(신규 채널: {len(new_channels_dict)}개, "
                 f"이름 변경: {len(updated_channels)}개, "
                 f"신규 매핑: {len(new_mappings)}개)"
@@ -120,4 +123,4 @@ async def sync_user_channels_task():
 
         except Exception as e:
             db.rollback()
-            logger.error(f"❌ 채널 동기화 중 에러 발생: {e}", exc_info=True)
+            logger.error(f"채널 동기화 중 에러 발생: {e}", exc_info=True)

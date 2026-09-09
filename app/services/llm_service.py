@@ -151,9 +151,11 @@ class LLMService:
             )
 
             result: RAGAnalysisResult = response.choices[0].message.parsed
+            '''
             logger.info(
                 f"[{channel_id}] RAG 분석 완료 - 추출된 액션 수: {len(result.actions)}개"
             )
+            '''
             return result
 
         except Exception as e:

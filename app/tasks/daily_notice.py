@@ -37,7 +37,10 @@ async def _send_notice_to_single_user(user_id: str, schedule_items_info: List[Di
     try:
         await graph_service.send_teams_chat_message(user_id=user_id, message=notice_message)
     except Exception as e:
+        '''
         logger.error(f"User {user_id} 알림 발송 실패: {e}")
+        '''
+        logger.error(f"User 알림 발송 실패: {e}")
 
 
 async def send_daily_notice_task():
@@ -72,7 +75,7 @@ async def send_daily_notice_task():
             results: List[Tuple[str, str, datetime, str]] = db.execute(stmt).all()
 
             if not results:
-                logger.info("ℹ️ 오늘 예정된 일정이 있는 유저가 없습니다.")
+                logger.info("오늘 예정된 일정이 있는 유저가 없습니다.")
                 return
 
             # 3. 조회 결과를 유저 ID별로 Grouping (메모리 내 딕셔너리 정렬)
@@ -93,9 +96,9 @@ async def send_daily_notice_task():
             # 5. asyncio.gather로 안전하게 병렬 발송
             if tasks:
                 await asyncio.gather(*tasks, return_exceptions=True)
-                logger.info(f"✅ 총 {len(tasks)}명 대상 당일 일정 알림 발송 작업 완료")
+                logger.info(f"총 {len(tasks)}명 대상 당일 일정 알림 발송 작업 완료")
 
         except Exception as e:
-            logger.error(f"❌ 당일 알림 태스크 실행 중 에러: {e}", exc_info=True)
+            logger.error(f"당일 알림 태스크 실행 중 에러: {e}", exc_info=True)
         finally:
             db.expunge_all()  # 세션 내 객체 인메모리 세션 캐시 초기화

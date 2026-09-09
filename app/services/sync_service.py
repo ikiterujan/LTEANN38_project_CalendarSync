@@ -53,7 +53,7 @@ def _build_full_description(description: Optional[str], teams_link: Optional[str
     
     if teams_link:
         link_html = (
-            f'<br><br>👉 <a href="{teams_link}" target="_blank" '
+            f'<br><br><a href="{teams_link}" target="_blank" '
             f'style="font-weight: bold; color: #005A9E; text-decoration: underline;">'
             f'Teams 원본 게시물 바로가기</a>'
         )
@@ -98,8 +98,6 @@ def _split_long_term_actions(actions: List[ScheduleAction]) -> List[ScheduleActi
             end_action.start_datetime = f"{end_dt.strftime('%Y-%m-%d')}T00:00:00"
             end_action.end_datetime = f"{end_dt.strftime('%Y-%m-%d')}T23:59:00"
             processed_actions.append(end_action)
-
-            logger.info(f"[LONG-TERM SPLIT] '{action.title}' ({day_diff}일) -> [#시작], [#종료] 분할 완료")
         else:
             # 7일 이하 단기/당일 일정은 그대로 유지
             processed_actions.append(action)
@@ -187,7 +185,10 @@ class SyncService:
                 outlook_event_id=outlook_event_id
             )
         except Exception as e:
+            '''
             logger.error(f"User {user_id} 캘린더 CREATE Fan-out 실패: {e}")
+            '''
+            logger.error(f"캘린더 CREATE Fan-out 실패: {e}")
             return None
 
     async def _handle_create(
@@ -281,7 +282,10 @@ class SyncService:
                         description=full_description
                     )
                 except Exception as e:
+                    '''
                     logger.error(f"User {user_id} 캘린더 UPDATE Fan-out 실패: {e}")
+                    '''
+                    logger.error(f"캘린더 UPDATE Fan-out 실패: {e}")
                 return None
             else:
                 try:
@@ -299,7 +303,10 @@ class SyncService:
                         outlook_event_id=outlook_event_id
                     )
                 except Exception as e:
+                    '''
                     logger.error(f"User {user_id} 캘린더 신규 등록 Fan-out 실패: {e}")
+                    '''
+                    logger.error(f"캘린더 신규 등록 Fan-out 실패: {e}")
                     return None
         return None
 
@@ -316,7 +323,7 @@ class SyncService:
 
         master_item = db.get(MasterCalendar, action.master_schedule_id)
         if not master_item:
-            logger.error(f"[UPDATE] ID {action.master_schedule_id} 마스터 일정 없음")
+            logger.error(f"[UPDATE] 기존 마스터 일정 없음")
             return
 
         start_dt = _parse_datetime(action.start_datetime)
@@ -372,7 +379,10 @@ class SyncService:
                 event_id=outlook_event_id
             )
         except Exception as e:
+            '''
             logger.error(f"User {user_id} 캘린더 DELETE Fan-out 실패: {e}")
+            '''
+            logger.error(f"캘린더 DELETE Fan-out 실패: {e}")
 
     async def _handle_delete(self, db: Session, action: ScheduleAction):
         if not action.master_schedule_id:
@@ -381,7 +391,7 @@ class SyncService:
 
         master_item = db.get(MasterCalendar, action.master_schedule_id)
         if not master_item:
-            logger.error(f"[DELETE] ID {action.master_schedule_id} 마스터 일정 없음")
+            logger.error(f"[DELETE] 기존 마스터 일정 없음")
             return
 
         stmt = select(UserSyncLog.user_id, UserSyncLog.outlook_event_id).where(
@@ -399,4 +409,3 @@ class SyncService:
         db.delete(master_item)
         db.commit()
         db.expunge_all()
-        logger.info(f"[DELETE 마스터 일정 완료] ID: {action.master_schedule_id}")

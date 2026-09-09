@@ -28,13 +28,13 @@ scheduler = AsyncIOScheduler(
 def start_scheduler():
     """APScheduler 작업 등록 및 시작"""
     if scheduler.running:
-        logger.warning("⚠️ 스케줄러가 이미 실행 중입니다.")
+        logger.warning("스케줄러가 이미 실행 중입니다.")
         return
 
     now = now_kst()
     
-    debug_time1 = now + timedelta(minutes=1)
-    debug_time2 = now + timedelta(minutes=2)
+    #debug_time1 = now + timedelta(minutes=1)
+    #debug_time2 = now + timedelta(minutes=2)
 
     # 1. 채널 동기화 (기본 4시간 - 앱 시작 즉시 1회 실행 후 주기적 실행)
     scheduler.add_job(
@@ -42,7 +42,8 @@ def start_scheduler():
         "interval",
         hours=settings.CHANNEL_SYNC_INTERVAL_HOURS,
         id="channel_sync_job",
-        next_run_time=debug_time1,  # 서버 구동 즉시 최초 1회 실행
+        next_run_time=now, # 서버 구동 즉시 최초 1회 실행
+        #next_run_time=debug_time1,
         replace_existing=True
     )
     
@@ -52,7 +53,8 @@ def start_scheduler():
         "interval",
         hours=settings.MESSAGE_SYNC_INTERVAL_HOURS,
         id="message_sync_job",
-        next_run_time=debug_time2,  # 서버 구동 즉시 최초 1회 실행
+        next_run_time=now,   # 서버 구동 즉시 최초 1회 실행
+        #next_run_time=debug_time2,
         replace_existing=True
     )
 
@@ -78,11 +80,11 @@ def start_scheduler():
     )
 
     scheduler.start()
-    logger.info("🚀 APScheduler 백그라운드 스케줄러가 성공적으로 시작되었습니다.")
+    logger.info("APScheduler 백그라운드 스케줄러가 성공적으로 시작되었습니다.")
 
 
 def stop_scheduler():
     """스케줄러 안전 종료 (Graceful Shutdown)"""
     if scheduler.running:
         scheduler.shutdown(wait=False)
-        logger.info("🛑 APScheduler 백그라운드 스케줄러가 종료되었습니다.")
+        logger.info("APScheduler 백그라운드 스케줄러가 종료되었습니다.")

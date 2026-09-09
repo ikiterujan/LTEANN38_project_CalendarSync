@@ -35,9 +35,9 @@ async def run_lifecycle_cleanup_task():
             db.commit()
             
             logger.info(
-                f"✅ 라이프사이클 태스크 완료 "
+                f"라이프사이클 태스크 완료 "
             )
 
         except Exception as e:
             db.rollback()
-            logger.error(f"❌ 라이프사이클 태스크 중 에러 발생: {e}", exc_info=True)
+            logger.error(f"라이프사이클 태스크 중 에러 발생: {e}", exc_info=True)

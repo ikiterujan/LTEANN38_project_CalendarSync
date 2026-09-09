@@ -51,20 +51,30 @@ async def cleanup_user_data(user_id: str, db: Session):
             return
 
         user_email = db_user.email
+        '''
         logger.info(f"🗑️ [앱 삭제 감지] User({user_id}) | Email: {user_email} 삭제 절차 시작")
+        '''
 
         # 1. MS Graph API를 통해 우리가 등록했던 Extended Property 일정만 깔끔하게 삭제
         deleted_events = await graph_service.delete_user_synced_events(user_id)
+        '''
         logger.info(f"🗑️ [Graph API] {user_email} 유저의 캘린더 일정 {deleted_events}건 삭제 완료")
+        '''
 
         # 2. DB 유저 삭제 (cascade로 관련 mapping/logs 함께 삭제)
         db.delete(db_user)
         db.commit()
+        '''
         logger.info(f"✅ [DB 유저 삭제 완료] User({user_id}) 데이터 완전 제거")
+        '''
+        logger.info(f"✅ [DB 유저 삭제 완료] 데이터 완전 제거")
 
     except Exception as e:
         db.rollback()
+        '''
         logger.error(f"❌ 유저 삭제/정리 중 에러 발생 (User: {user_id}): {e}", exc_info=True)
+        '''
+        logger.error(f"유저 삭제/정리 중 에러 발생: {e}", exc_info=True)
 
 @router.post("/api/messages")
 async def teams_event_webhook(
@@ -98,9 +108,14 @@ async def teams_event_webhook(
         user_info = await graph_service.get_user(user_id)
         if user_info:
             user_email = user_info.get("mail") or user_info.get("userPrincipalName")
+            '''
             logger.info(f"🔍 [Graph API] Email 조회 성공: User({user_id}) -> {user_email}")
+            '''
     except Exception as ge:
-        logger.warning(f"⚠️ [Graph API] User({user_id}) 이메일 조회 실패: {ge}")
+        '''
+        logger.warning(f"[Graph API] User({user_id}) 이메일 조회 실패: {ge}")
+        '''
+        logger.warning(f"[Graph API] 이메일 조회 실패: {ge}")
         
     user_grade = calculate_grade_from_email(user_email, now_utc.year)
 
@@ -130,7 +145,10 @@ async def teams_event_webhook(
                     last_active_at=now_utc
                 )
                 db.add(new_user)
+                '''
                 logger.info(f"✨ [신규 유저 등록] User({user_id}) | Email: {user_email} | Grade: {user_grade}")
+                '''
+                logger.info(f"[신규 유저 등록]")
             else:
                 # 기존 유저 정보 갱신 (지정 객체만 단건 조작)
                 db_user = db.get(User, user_id)
@@ -145,7 +163,10 @@ async def teams_event_webhook(
                         db_user.service_url = service_url
                     db_user.is_active = True
                     db_user.last_active_at = now_utc
+                    '''
                     logger.info(f"🔄 [유저 정보 갱신] User({user_id}) | Email: {user_email} | Grade: {user_grade}")
+                    '''
+                    logger.info(f"🔄 [유저 정보 갱신]")
 
             db.commit()
 

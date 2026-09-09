@@ -68,7 +68,7 @@ async def sync_channel_messages_task():
             channels: List[Tuple[str, str]] = db.execute(stmt).all()
 
             if not channels:
-                logger.info("ℹ️ 동기화 대상 채널이 없습니다.")
+                logger.info("동기화 대상 채널이 없습니다.")
                 return
 
             # 2. Primitive 값(channel_id, team_id)만 전달하여 병렬 실행
@@ -78,7 +78,7 @@ async def sync_channel_messages_task():
             ]
             
             await asyncio.gather(*tasks, return_exceptions=True)
-            logger.info("✅ 메시지 및 일정 동기화 태스크 완료 (병렬 처리)")
+            logger.info("메시지 및 일정 동기화 태스크 완료 (병렬 처리)")
 
         except Exception as e:
-            logger.error(f"❌ 메시지 동기화 태스크 실행 중 에러: {e}", exc_info=True)
+            logger.error(f"메시지 동기화 태스크 실행 중 에러: {e}", exc_info=True)

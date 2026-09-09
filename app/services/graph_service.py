@@ -15,13 +15,15 @@ class GraphService:
         tenant_id: str,
         client_id: str,
         client_secret: str,
-        client: httpx.AsyncClient  # 전역 httpx.AsyncClient 주입
+        client: httpx.AsyncClient,  # 전역 httpx.AsyncClient 주입
+        max_concurrent_requests: int = 4
     ):
         self.tenant_id = tenant_id
         self.client_id = client_id
         self.client_secret = client_secret
         self._client = client  # 전역 HTTP 클라이언트 재사용
         self._access_token: Optional[str] = None
+        self._semaphore = asyncio.Semaphore(max_concurrent_requests)
 
     async def _get_access_token(self) -> str:
         """Azure AD OAuth2.0 Token 발급 (App-only permission)"""
@@ -53,21 +55,37 @@ class GraphService:
         self, 
         method: str, 
         url: str, 
-        json_payload: Optional[Dict[str, Any]] = None
+        json_payload: Optional[Dict[str, Any]] = None,
+        max_retries: int = 5
     ) -> httpx.Response:
         """401 토큰 만료 자동 재시도를 포함한 공통 HTTP 요청 Wrapper"""
-        headers = await self._get_headers()
-        
-        res = await self._client.request(method, url, headers=headers, json=json_payload)
-        
-        # 401 Unauthorized 시 토큰 재발급 후 1회 재시도
-        if res.status_code == 401:
-            logger.info("[Graph API] 토큰 만료 감지, 재발급 후 재시도합니다.")
-            await self._get_access_token()
-            headers = await self._get_headers()
-            res = await self._client.request(method, url, headers=headers, json=json_payload)
+        async with self._semaphore:
+            for attempt in range(max_retries):
+                headers = await self._get_headers()
+                
+                try:
+                    res = await self._client.request(method, url, headers=headers, json=json_payload)
 
-        return res
+                    # 1. 429 Too Many Requests 처리 (지수 백오프 및 Retry-After 적용)
+                    if res.status_code == 429:
+                        retry_after = int(res.headers.get("Retry-After", 2 ** attempt))
+                        logger.warning(f"[Graph API 429 Throttled] {retry_after}초 후 재시도합니다... ({attempt + 1}/{max_retries})")
+                        await asyncio.sleep(retry_after)
+                        continue
+
+                    # 2. 401 Unauthorized 처리 (토큰 재발급 후 재시도)
+                    if res.status_code == 401 and attempt == 0:
+                        logger.info("[Graph API] 토큰 만료 감지, 재발급 후 재시도합니다.")
+                        await self._get_access_token()
+                        continue
+
+                    return res
+
+                except httpx.RequestError as e:
+                    logger.error(f"[Graph API 네트워크 에러] {e} (재시도 중... {attempt + 1}/{max_retries})")
+                    await asyncio.sleep(1)
+
+            return res
 
     async def get_user(self, user_id: str) -> Optional[Dict[str, Any]]:
         """
@@ -79,19 +97,30 @@ class GraphService:
         try:
             res = await self._request_with_retry("GET", url)
             if res.status_code == 404:
+                '''
                 logger.warning(f"[Graph API] 존재하지 않는 사용자 ID: {user_id}")
+                '''
+                logger.warning(f"[Graph API] 존재하지 않는 사용자 ID")
                 return None
             
             res.raise_for_status()
             user_data = res.json()
+            '''
             logger.info(f"[Graph API] User {user_id} 정보 조회 성공 (UPN: {user_data.get('userPrincipalName')})")
+            '''
             return user_data
 
         except httpx.HTTPStatusError as e:
+            '''
             logger.error(f"[Graph API] User {user_id} 정보 조회 실패: {e}")
+            '''
+            logger.error(f"[Graph API] 정보 조회 실패: {e}")
             return None
         except Exception as e:
+            '''
             logger.error(f"[Graph API] User {user_id} 조회 중 알 수 없는 에러: {e}")
+            '''
+            logger.error(f"[Graph API] 조회 중 알 수 없는 에러: {e}")
             return None
         
     async def _get_all_pages(self, url: str) -> List[Dict[str, Any]]:
@@ -124,7 +153,10 @@ class GraphService:
         try:
             joined_teams = await self._get_all_pages(teams_url)
         except httpx.HTTPStatusError as e:
+            '''
             logger.error(f"[Graph API] User {user_id} 소속 팀 조회 실패: {e}")
+            '''
+            logger.error(f"[Graph API] 소속 팀 조회 실패: {e}")
             return []
 
         channels: List[Dict[str, Any]] = []
@@ -134,7 +166,10 @@ class GraphService:
             try:
                 team_channels = await self._get_all_pages(channels_url)
             except httpx.HTTPStatusError as e:
+                '''
                 logger.error(f"[Graph API] Team {team_id} 채널 조회 실패: {e}")
+                '''
+                logger.error(f"[Graph API] Team 채널 조회 실패: {e}")
                 continue
 
             for ch in team_channels:
@@ -158,20 +193,23 @@ class GraphService:
         try:
             messages = await self._get_all_pages(url)
         except httpx.HTTPStatusError as e:
+            '''
             logger.error(f"[Graph API] Channel {channel_id} 메시지 조회 실패: {e}")
+            '''
+            logger.error(f"[Graph API] 메시지 조회 실패: {e}")
             return []
 
         cutoff = datetime.now(timezone.utc) - timedelta(minutes=since_minutes)
         recent_messages = []
         for msg in messages:
-            # if msg.get("messageType") != "message" or msg.get("deletedDateTime"):
-            #     continue
-
-            # last_modified = msg.get("lastModifiedDateTime") or msg.get("createdDateTime")
-            # if last_modified:
-            #     msg_dt = datetime.fromisoformat(last_modified.replace("Z", "+00:00"))
-            #     if msg_dt < cutoff:
-            #         continue
+            if msg.get("messageType") != "message" or msg.get("deletedDateTime"):
+                continue
+            
+            last_modified = msg.get("lastModifiedDateTime") or msg.get("createdDateTime")
+            if last_modified:
+                msg_dt = datetime.fromisoformat(last_modified.replace("Z", "+00:00"))
+                if msg_dt < cutoff:
+                    continue
 
             recent_messages.append(msg)
 
@@ -223,7 +261,9 @@ class GraphService:
         res = await self._request_with_retry("POST", url, json_payload=payload)
         res.raise_for_status()
         event_data = res.json()
+        '''
         logger.info(f"[Graph API] User {user_id} 캘린더 일정 생성 성공 (Event ID: {event_data['id']})")
+        '''
         return event_data["id"]
 
     async def update_user_calendar_event(
@@ -261,7 +301,9 @@ class GraphService:
 
         res = await self._request_with_retry("PATCH", url, json_payload=payload)
         res.raise_for_status()
+        '''
         logger.info(f"[Graph API] User {user_id} 캘린더 일정 수정 성공 (Event ID: {event_id})")
+        '''
 
     async def delete_user_calendar_event(
         self,
@@ -274,11 +316,16 @@ class GraphService:
         res = await self._request_with_retry("DELETE", url)
 
         if res.status_code == 404:
+            '''
             logger.warning(f"[Graph API] User {user_id} 삭제 대상 이벤트가 존재하지 않음 (Event ID: {event_id})")
+            '''
+            logger.warning(f"[Graph API] 삭제 대상 이벤트가 존재하지 않음")
             return
 
         res.raise_for_status()
+        '''
         logger.info(f"[Graph API] User {user_id} 캘린더 일정 삭제 성공 (Event ID: {event_id})")
+        '''
         
     
     async def delete_user_synced_events(
@@ -306,11 +353,13 @@ class GraphService:
             events_to_delete = await self._get_all_pages(url)
             
             if not events_to_delete:
-                logger.info(f"[Graph API] 삭제할 동기화 일정이 없습니다. (User: {user_id})")
+                logger.info(f"[Graph API] 삭제할 동기화 일정이 없습니다.")
                 return 0
 
             total_count = len(events_to_delete)
+            '''
             logger.info(f"[Graph API] User({user_id})의 동기화 일정 {total_count}건 발견. 병렬 삭제 시작...")
+            '''
 
             # 2. asyncio.gather로 삭제 태스크들을 병렬로 생성 및 실행
             # return_exceptions=True를 설정하면 특정 일정 1개가 실패하더라도 나머지는 계속 삭제를 진행합니다.
@@ -327,12 +376,21 @@ class GraphService:
             failed_count = total_count - success_count
 
             if failed_count > 0:
-                logger.warning(f"⚠️ [Graph API] User({user_id}) 일정 삭제 완료 (성공: {success_count}건, 실패: {failed_count}건)")
+                '''
+                logger.warning(f"[Graph API] User({user_id}) 일정 삭제 완료 (성공: {success_count}건, 실패: {failed_count}건)")
+                '''
+                logger.warning(f"[Graph API] 일정 삭제 완료 (성공: {success_count}건, 실패: {failed_count}건)")
             else:
-                logger.info(f"✅ [Graph API] User({user_id}) 모든 동기화 일정 삭제 성공 (총 {success_count}건)")
+                '''
+                logger.info(f"[Graph API] User({user_id}) 모든 동기화 일정 삭제 성공 (총 {success_count}건)")
+                '''
+                logger.info(f"[Graph API] 모든 동기화 일정 삭제 성공 (총 {success_count}건)")
 
             return success_count
 
         except Exception as e:
-            logger.error(f"❌ [Graph API] 일정 일괄 삭제 처리 중 에러 (User: {user_id}): {e}", exc_info=True)
+            '''
+            logger.error(f"[Graph API] 일정 일괄 삭제 처리 중 에러 (User: {user_id}): {e}", exc_info=True)
+            '''
+            logger.error(f"[Graph API] 일정 일괄 삭제 처리 중 에러: {e}", exc_info=True)
             return 0
