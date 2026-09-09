@@ -48,10 +48,16 @@ def _build_full_description(description: Optional[str], teams_link: Optional[str
     """본문 하단에 Teams 원본 메시지 링크 결합"""
     desc_parts = []
     if description and description.strip():
-        desc_parts.append(description.strip())
+        formatted_desc = description.strip().replace("\n", "<br>")
+        desc_parts.append(f"<div>{formatted_desc}</div>")
     
     if teams_link:
-        desc_parts.append(f"\n\n🔗 [Teams 원본 게시물 바로가기]({teams_link})")
+        link_html = (
+            f'<br><br>👉 <a href="{teams_link}" target="_blank" '
+            f'style="font-weight: bold; color: #005A9E; text-decoration: underline;">'
+            f'Teams 원본 게시물 바로가기</a>'
+        )
+        desc_parts.append(link_html)
         
     return "".join(desc_parts)
 
@@ -200,7 +206,7 @@ class SyncService:
             logger.warning(f"[CREATE SKIP] 유효하지 않은 날짜 (start: '{action.start_datetime}', end: '{action.end_datetime}')")
             return
 
-        formatted_title = _format_title(action.subject, action.title)
+        formatted_title = action.title.strip()
         full_description = _build_full_description(action.description, teams_link)
         content_hash = self._generate_content_hash(formatted_title, action)
 
