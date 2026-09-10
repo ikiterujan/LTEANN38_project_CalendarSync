@@ -62,6 +62,7 @@ async def send_daily_notice_task():
                     MasterCalendar.start_datetime,
                     MasterCalendar.location
                 )
+                .select_from(UserSyncLog)
                 .join(MasterCalendar, UserSyncLog.master_schedule_id == MasterCalendar.id)
                 .join(User, UserSyncLog.user_id == User.id)
                 .where(

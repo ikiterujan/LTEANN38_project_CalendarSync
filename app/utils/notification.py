@@ -26,6 +26,7 @@ def get_single_user_today_schedules(db: Session, user_id: str) -> List[Dict[str,
             MasterCalendar.location,
             MasterCalendar.description
         )
+        .select_from(UserSyncLog)
         .join(MasterCalendar, UserSyncLog.master_schedule_id == MasterCalendar.id)
         .join(User, UserSyncLog.user_id == User.id)
         .where(
