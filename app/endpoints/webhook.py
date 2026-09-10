@@ -135,7 +135,7 @@ async def teams_event_webhook(
                 bot_service.send_teams_reply,
                 service_url,
                 user_conversation_id,
-                reply_text,
+                goodbye_text,
             )
             background_tasks.add_task(cleanup_user_data, user_id, db)
             return {"status": "ok", "message": "user_cleanup_initiated"}
