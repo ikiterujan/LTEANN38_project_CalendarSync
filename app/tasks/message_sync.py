@@ -4,7 +4,6 @@ import asyncio
 from typing import List, Tuple, Dict, Any
 from sqlalchemy.orm import Session
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime
 
 from app.core.config import settings
@@ -18,10 +17,10 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 sync_service = SyncService(graph_service)
 
-async def get_calculated_lookback_minutes(db: AsyncSession, channel_id: str) -> int:
+async def get_calculated_lookback_minutes(db: Session, channel_id: str) -> int:
     # 1. DB에서 채널 정보 조회
     stmt = select(Channel).where(Channel.channel_id == channel_id)
-    result = await db.execute(stmt)
+    result = db.execute(stmt)
     channel = result.scalars().first()
 
     # 2. 동기화 이력이 없거나 채널 레코드가 없는 경우 -> 최초 동기화 (Initial Sync)
