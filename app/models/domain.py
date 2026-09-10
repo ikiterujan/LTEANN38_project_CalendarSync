@@ -66,7 +66,8 @@ class User(Base):
     sync_logs = relationship(
         "UserSyncLog", 
         back_populates="user", 
-        cascade="all, delete-orphan"
+        cascade="all, delete-orphan",  # ORM 객체 삭제 시 자식도 삭제
+        passive_deletes=True
     )
 
 
