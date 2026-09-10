@@ -73,14 +73,17 @@ async def _process_single_channel_messages(channel_id: str, team_id: str):
                     raw_message_id=msg["id"],
                     rag_result=rag_result
                 )
-            channel = db.query(Channel).filter(Channel.id == channel_id).first()
+            # 1. select 구문으로 채널 조회
+            stmt = select(Channel).where(Channel.channel_id == channel_id)
+            channel = db.execute(stmt).scalar_one_or_none()
+
             if channel:
                 channel.last_synced_at = now_kst()
             else:
-                # 채널 레코드가 없다면 생성
+                # 채널 레코드가 없다면 신규 생성
                 channel = Channel(
-                    id=channel_id, 
-                    team_id=team_id, 
+                    id=channel_id,
+                    team_id=team_id,
                     last_synced_at=now_kst()
                 )
                 db.add(channel)
