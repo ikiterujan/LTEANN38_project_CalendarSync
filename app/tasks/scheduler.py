@@ -32,7 +32,7 @@ def start_scheduler():
         return
 
     now = now_kst()
-    
+    delay_time = now + timedelta(minutes=30)
     debug_time1 = now + timedelta(minutes=1)
     debug_time2 = now + timedelta(minutes=2)
 
@@ -53,7 +53,7 @@ def start_scheduler():
         "interval",
         hours=settings.MESSAGE_SYNC_INTERVAL_HOURS,
         id="message_sync_job",
-        next_run_time=now,   # 서버 구동 즉시 최초 1회 실행
+        next_run_time=delay_time,   # 서버 구동 즉시 최초 1회 실행
         #next_run_time=debug_time2,
         replace_existing=True
     )
