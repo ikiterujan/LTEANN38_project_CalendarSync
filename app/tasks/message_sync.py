@@ -27,7 +27,9 @@ async def get_calculated_lookback_minutes(db: Session, channel_id: str) -> int:
     if not channel or channel.last_synced_at is None:
         lookback_days = settings.MESSAGE_SYNC_INITIAL_LOOKBACK_DAYS  # 예: 30일
         lookback_minutes = lookback_days * 24 * 60
+        '''
         logger.info(f"🆕 [Initial Sync] 채널 '{channel_id}' 최초 동기화 실행 ({lookback_days}일 치)")
+        '''
         return lookback_minutes
 
     # 3. 기존 동기화 이력이 있는 경우 -> 주기적 동기화 (Periodic Sync)
@@ -35,7 +37,9 @@ async def get_calculated_lookback_minutes(db: Session, channel_id: str) -> int:
         settings.MESSAGE_SYNC_INTERVAL_HOURS * 60 
         + settings.MESSAGE_SYNC_LOOKBACK_BUFFER_MINUTES
     )
+    '''
     logger.info(f"🔄 [Periodic Sync] 채널 '{channel_id}' 주기적 동기화 실행 ({periodic_lookback_minutes}분)")
+    '''
     return periodic_lookback_minutes
 
 async def _process_single_channel_messages(channel_id: str, team_id: str):
@@ -89,10 +93,15 @@ async def _process_single_channel_messages(channel_id: str, team_id: str):
                 db.add(channel)
 
             db.commit()  # 최종 커밋
+            '''
             logger.info(f"✅ 채널 {channel_id} 동기화 완료 및 last_synced_at 업데이트 성공")
+            '''
 
         except Exception as e:
+            '''
             logger.error(f"Channel {channel_id} 메시지 동기화 에러: {e}", exc_info=True)
+            '''
+            logger.error(f"Channel 메시지 동기화 에러: {e}", exc_info=True)
 
 
 async def sync_channel_messages_task():
