@@ -12,7 +12,6 @@ from app.core.dependencies import graph_service, llm_service, sync_service
 from app.services.sync_service import SyncService
 from app.models.domain import Channel
 from app.core.timezone import now_kst
-from app.utils.teams import extract_message_content
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
@@ -58,7 +57,7 @@ async def _process_single_channel_messages(channel_id: str, team_id: str):
             )
 
             for msg in messages:
-                content = extract_message_content(msg)
+                content = sync_service.extract_message_content(msg_payload=msg)
                 if not content:
                     continue
 
