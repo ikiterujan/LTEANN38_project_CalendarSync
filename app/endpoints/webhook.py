@@ -129,7 +129,7 @@ async def teams_event_webhook(
             goodbye_text = (
                 "**CalendarSync 서비스 연동을 해지합니다**\n\n"
                 "캘린더에 동기화되있는 일정을 자동으로 삭제하며 "
-                "더 이상 알림을 수신하지 않게됩니다. 안녕히가세요~!"
+                "더 이상 알림을 수신하지 않게 됩니다. 안녕히가세요~!"
             )
             background_tasks.add_task(
                 bot_service.send_teams_reply,
@@ -211,8 +211,9 @@ async def teams_event_webhook(
                         "• **지원 명령어**:\n"
                         "  - '/help': 도움말 출력\n"
                         "  - '/status': 서비스 연결 상태 및 서버 상태 확인\n"
-                        "  - '/sync': 수동 동기화 요청"
-                        "  - '/schedule': 오늘의 일정 불러오기"
+                        "  - '/sync': 수동 동기화 요청\n"
+                        "  - '/schedule': 오늘의 일정 불러오기\n\n"
+                        "* 서버 과부화 방지를 위해 명령어는 30초 타임아웃이 있습니다"
                     )
 
                 elif clean_text in ("/status", "status"):
@@ -230,8 +231,11 @@ async def teams_event_webhook(
                     )
                 
                 elif clean_text in ("/schedule", "schedule"):
-                    result = send_today_notice_to_user(db, user_id)
-                    
+                    try:
+                        result = send_today_notice_to_user(db, user_id)
+                        return
+                    except e:
+                        logger.error("디버깅",exc_info=True)
                 else:
                     # 지정된 커맨드가 아닌 일반 메시지를 보냈을 때의 기본 안내
                     reply_text = (
