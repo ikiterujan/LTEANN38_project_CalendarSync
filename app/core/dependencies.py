@@ -4,6 +4,7 @@ from app.core.config import settings
 from app.services.graph_service import GraphService
 from app.services.llm_service import LLMService
 from app.services.bot_service import BotService
+from app.services.sync_service import SyncService
 
 import httpx
 
@@ -28,5 +29,7 @@ graph_service = GraphService(
     client_secret=settings.AZURE_CLIENT_SECRET,
     client=global_httpx_client
 )
+
+sync_service = SyncService(graph_service)
 
 llm_service = LLMService(openai_client=openai_client)

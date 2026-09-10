@@ -8,7 +8,7 @@ from datetime import datetime
 
 from app.core.config import settings
 from app.core.database import SessionLocal
-from app.core.dependencies import graph_service, llm_service
+from app.core.dependencies import graph_service, llm_service, sync_service
 from app.services.sync_service import SyncService
 from app.models.domain import Channel
 from app.core.timezone import now_kst
@@ -16,7 +16,6 @@ from app.utils.teams import extract_message_content
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
-sync_service = SyncService(graph_service)
 
 async def get_calculated_lookback_minutes(db: Session, channel_id: str) -> int:
     # 1. DB에서 채널 정보 조회
