@@ -211,13 +211,13 @@ async def teams_event_webhook(
                 if clean_text in ("/help", "help"):
                     reply_text = (
                         "**CalendarSync 사용 안내**\n\n"
-                        "• **자동 동기화**: 채널에 올라오는 공지사항을 AI가 분석하여 캘린더에 자동 등록합니다.\n"
+                        "• **자동 동기화**: 채널에 올라오는 공지사항을 AI가 분석하여 캘린더에 자동 등록합니다.\n\n"
                         "• **지원 명령어**:\n"
                         "  - '/help': 도움말 출력\n"
                         "  - '/status': 서비스 연결 상태 및 서버 상태 확인\n"
                         "  - '/sync': 수동 동기화 요청\n"
                         "  - '/schedule': 오늘의 일정 불러오기\n\n"
-                        "* 서버 과부화 방지를 위해 명령어는 30초 타임아웃이 있습니다"
+                        "서버 과부화 방지를 위해 명령어는 30초 타임아웃이 있습니다"
                     )
 
                 elif clean_text in ("/status", "status"):
