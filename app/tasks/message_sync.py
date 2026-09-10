@@ -57,7 +57,7 @@ async def _process_single_channel_messages(channel_id: str, team_id: str):
             )
 
             for msg in messages:
-                content = sync_service.extract_message_content(msg_payload=msg)
+                content = await sync_service.extract_message_content(msg_payload=msg)
                 if not content:
                     continue
 
