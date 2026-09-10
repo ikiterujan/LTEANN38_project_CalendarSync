@@ -83,6 +83,8 @@ class Channel(Base):
         server_default=func.now(), 
         server_onupdate=func.now()
     )
+    
+    last_synced_at = Column(DateTime(timezone=True), nullable=True)
 
     users = relationship(
         "User", 

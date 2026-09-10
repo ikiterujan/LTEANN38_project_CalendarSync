@@ -33,8 +33,8 @@ def start_scheduler():
 
     now = now_kst()
     
-    #debug_time1 = now + timedelta(minutes=1)
-    #debug_time2 = now + timedelta(minutes=2)
+    debug_time1 = now + timedelta(minutes=1)
+    debug_time2 = now + timedelta(minutes=2)
 
     # 1. 채널 동기화 (기본 4시간 - 앱 시작 즉시 1회 실행 후 주기적 실행)
     scheduler.add_job(
@@ -42,8 +42,8 @@ def start_scheduler():
         "interval",
         hours=settings.CHANNEL_SYNC_INTERVAL_HOURS,
         id="channel_sync_job",
-        next_run_time=now, # 서버 구동 즉시 최초 1회 실행
-        #next_run_time=debug_time1,
+        #next_run_time=now, # 서버 구동 즉시 최초 1회 실행
+        next_run_time=debug_time1,
         replace_existing=True
     )
     
@@ -53,8 +53,8 @@ def start_scheduler():
         "interval",
         hours=settings.MESSAGE_SYNC_INTERVAL_HOURS,
         id="message_sync_job",
-        next_run_time=now,   # 서버 구동 즉시 최초 1회 실행
-        #next_run_time=debug_time2,
+        #next_run_time=now,   # 서버 구동 즉시 최초 1회 실행
+        next_run_time=debug_time2,
         replace_existing=True
     )
 

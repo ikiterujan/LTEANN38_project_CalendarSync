@@ -16,7 +16,7 @@ class GraphService:
         client_id: str,
         client_secret: str,
         client: httpx.AsyncClient,  # 전역 httpx.AsyncClient 주입
-        max_concurrent_requests: int = 4
+        max_concurrent_requests: int = 10
     ):
         self.tenant_id = tenant_id
         self.client_id = client_id
