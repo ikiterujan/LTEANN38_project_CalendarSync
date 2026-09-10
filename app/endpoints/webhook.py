@@ -46,43 +46,54 @@ def calculate_grade_from_email(email: Optional[str], current_year: int) -> Optio
     return None
 
 async def cleanup_user_data(user_id: str, db: Session):
-    """유저가 앱을 삭제/차단했을 때 Graph API 일정 삭제 및 DB 유저 완전 삭제"""
+    """유저가 앱을 삭제/차단했을 때 Graph API 일정 완전 삭제 및 DB 유저 잔여 데이터 정제"""
     try:
-        # 1. DB에서 유저 조회 (select 사용)
+        # 1. DB에서 유저 조회
         user_stmt = select(User).where(User.id == user_id)
         db_user = db.execute(user_stmt).scalar_one_or_none()
         
         if not db_user:
             return
 
-        # Graph API에서 요구하는 유저 식별자 (email 우선, 없으면 user_id)
         target_graph_user = db_user.email if db_user.email else db_user.id
 
-        # 2. DB SyncLog에서 해당 유저의 outlook_event_id 리스트 추출 (select 사용)
-        log_stmt = select(UserSyncLog.outlook_event_id).where(UserSyncLog.user_id == user_id)
-        event_ids = db.execute(log_stmt).scalars().all()
+        # 2. DB SyncLog에서 유효한 outlook_event_id 추출 (None 및 빈 문자열 제거)
+        log_stmt = select(UserSyncLog.outlook_event_id).where(
+            UserSyncLog.user_id == user_id,
+            UserSyncLog.outlook_event_id.isnot(None)
+        )
+        raw_event_ids = db.execute(log_stmt).scalars().all()
+        valid_event_ids = [e_id for e_id in raw_event_ids if e_id and e_id.strip()]
 
         deleted_count = 0
-        if event_ids:
-            # DB 로그 기반 삭제
-            deleted_count = await graph_service.delete_events_by_ids(
-                user_id=target_graph_user, 
-                event_ids=event_ids
-            )
-        else:
-            # SyncLog가 없을 경우 Fallback: Extended Property 삭제 시도
-            deleted_count = await graph_service.delete_user_synced_events(
+
+        # Step A: DB 로그 기반 타겟 삭제 시도
+        if valid_event_ids:
+            try:
+                deleted_count += await graph_service.delete_events_by_ids(
+                    user_id=target_graph_user, 
+                    event_ids=valid_event_ids
+                )
+            except Exception as graph_err:
+                logger.warning(f"ID 기반 Graph API 삭제 중 일부 실패 (Fallback 진행): {graph_err}")
+
+        # Step B: Fallback (보완책) - DB에 없거나 누락된 유령 일정까지 Extended Property로 조회하여 이중 삭제
+        try:
+            fallback_deleted = await graph_service.delete_user_synced_events(
                 user_id=target_graph_user
             )
+            deleted_count += fallback_deleted
+        except Exception as fallback_err:
+            logger.warning(f"Extended Property 기반 Fallback 삭제 실패: {fallback_err}")
+        '''
+        logger.info(f"🗑️ [Graph API] 총 {deleted_count}건의 Outlook 일정 최종 삭제 완료")
+        '''
 
-        '''
-        logger.info(f"🗑️ [Graph API] 일정 {deleted_count}건 삭제 완료")
-        '''
         # 3. DB 유저 삭제 (Cascade 설정으로 관련 SyncLog, ChannelMapping 자동 삭제)
         db.delete(db_user)
         db.commit()
 
-        logger.info("[DB 유저 삭제 완료] 데이터 완전 제거")
+        logger.info(f"[DB 유저 삭제 완료] 데이터 완전 제거")
 
     except Exception as e:
         db.rollback()
