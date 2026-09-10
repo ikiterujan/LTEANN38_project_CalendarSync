@@ -20,7 +20,7 @@ sync_service = SyncService(graph_service)
 
 async def get_calculated_lookback_minutes(db: AsyncSession, channel_id: str) -> int:
     # 1. DB에서 채널 정보 조회
-    stmt = select(Channel).where(Channel.id == channel_id)
+    stmt = select(Channel).where(Channel.channel_id == channel_id)
     result = await db.execute(stmt)
     channel = result.scalars().first()
 
