@@ -20,7 +20,7 @@
 ### 제5조 (서비스 이용의 제한 및 중단)
 1. 개발팀은 다음 각 호에 해당하는 경우 서비스 제공을 일시적으로 중단하거나 제한할 수 있습니다.
    - 시스템 점검, 서버 교체 및 유지보수가 필요한 경우
-   - Microsoft Teams, Graph API, Oracle Cloud Infrastructure(OCI), OpenAI API 등 외부 서비스의 장애가 발생한 경우
+   - Microsoft Teams, Graph API, Oracle Cloud Infrastructure(OCI), OpenAI API, duckdns 등 외부 서비스의 장애가 발생한 경우
    - 천재지변, 비상사태 등 불가항력적인 사유가 있는 경우
 2. 이용자가 시스템을 불법적으로 해킹하거나 정상적인 운영을 방해하는 경우 이용을 즉시 차단할 수 있습니다.
 
