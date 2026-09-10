@@ -226,7 +226,6 @@ async def teams_event_webhook(
                         "• **지원 명령어**:\n"
                         "  - '/help': 도움말 출력\n"
                         "  - '/status': 서비스 연결 상태 및 서버 상태 확인\n"
-                        "  - '/sync': 수동 동기화 요청\n"
                         "  - '/schedule': 오늘의 일정 불러오기\n\n"
                         "서버 과부화 방지를 위해 명령어는 30초 타임아웃이 있습니다"
                     )
@@ -236,13 +235,6 @@ async def teams_event_webhook(
                         f"🟢 **CalendarSync 서비스 상태: 정상**\n\n"
                         f"• **등록 계정**: `{user_email or '미확인'}`\n"
                         f"• **학년 정보**: `{user_grade}학년`" if user_grade else "• **학년 정보**: `일반`"
-                    )
-
-                elif clean_text in ("/sync", "sync"):
-                    result = await sync_service.sync_user_from_master(db, user_id)
-                    reply_text = (
-                        "**수동 동기화 안내**\n\n"
-                        "수동으로 서버에서 일정을 가져와 캘린더에 동기화시킵니다.\n"
                     )
                 
                 elif clean_text in ("/schedule", "schedule"):
