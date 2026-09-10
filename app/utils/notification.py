@@ -77,7 +77,10 @@ async def send_today_notice_to_user(db: Session, user_id: str) -> Dict[str, Any]
         user = db.execute(user_stmt).scalar_one_or_none()
     
         if not user or not user.conversation_id or not user.service_url:
+            '''
             logger.warning(f"User {user_id}의 Bot 대화 정보(conversation_id / service_url)가 없습니다.")
+            '''
+            logger.warning(f"User의 Bot 대화 정보(conversation_id / service_url)가 없습니다.")
             return {"success": False, "reason": "Bot conversation info missing", "count": 0}
         schedules = get_single_user_today_schedules(db, user_id)
         notice_message = format_schedule_message(schedules)

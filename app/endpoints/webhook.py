@@ -75,13 +75,14 @@ async def cleanup_user_data(user_id: str, db: Session):
                 user_id=target_graph_user
             )
 
+        '''
         logger.info(f"🗑️ [Graph API] 일정 {deleted_count}건 삭제 완료")
-
+        '''
         # 3. DB 유저 삭제 (Cascade 설정으로 관련 SyncLog, ChannelMapping 자동 삭제)
         db.delete(db_user)
         db.commit()
 
-        logger.info("✅ [DB 유저 삭제 완료] 데이터 완전 제거")
+        logger.info("[DB 유저 삭제 완료] 데이터 완전 제거")
 
     except Exception as e:
         db.rollback()
@@ -269,5 +270,5 @@ async def teams_event_webhook(
             return {"status": "ok"}
     except Exception as e:
         db.rollback()
-        logger.error(f"❌ Teams Webhook 처리 중 에러 발생: {e}", exc_info=True)
+        logger.error(f"Teams Webhook 처리 중 에러 발생: {e}", exc_info=True)
         return {"status": "error", "message": str(e)}
