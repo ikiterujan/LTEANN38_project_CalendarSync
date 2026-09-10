@@ -236,7 +236,7 @@ async def teams_event_webhook(
                 
                 elif clean_text in ("/schedule", "schedule"):
                     try:
-                        result = send_today_notice_to_user(db, user_id)
+                        result = await send_today_notice_to_user(db, user_id)
                         return
                     except e:
                         logger.error("디버깅",exc_info=True)
