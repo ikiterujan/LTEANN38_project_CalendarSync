@@ -394,3 +394,17 @@ class GraphService:
             '''
             logger.error(f"[Graph API] 일정 일괄 삭제 처리 중 에러: {e}", exc_info=True)
             return 0
+    async def delete_events_by_ids(self, user_id: str, event_ids: List[str]) -> int:
+        """Event ID 리스트를 전달받아 병렬 삭제 처리"""
+        valid_ids = [eid for eid in event_ids if eid]
+        if not valid_ids:
+            return 0
+
+        delete_tasks = [
+            self.delete_user_calendar_event(user_id=user_id, event_id=eid)
+            for eid in valid_ids
+        ]
+
+        results = await asyncio.gather(*delete_tasks, return_exceptions=True)
+        success_count = sum(1 for r in results if not isinstance(r, Exception))
+        return success_count

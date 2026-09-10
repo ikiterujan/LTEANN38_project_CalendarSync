@@ -506,22 +506,9 @@ class SyncService:
             return {"success": True, "synced_count": synced_count}
 
         except Exception as e:
-            if "404" in str(e):
-                # 1차 실패 후 복구 시도
-                try:
-                    # DB 잔재 정리 후 신규 생성 시도
-                    db.query(UserSyncLog).filter(...).delete()
-                    db.commit()
-                    
-                    return await self._create_single_user_event(...)
-                except Exception as create_err:
-                    # 2차 시도(생성)마저 실패했을 때 처리
-                    db.rollback()
-                    logger.error(f"404 복구(신규 생성) 실패: {create_err}")
-                    return None
-            else:
-                logger.error(f"기타 UPDATE 실패: {e}")
-                return None
+            db.rollback()
+            logger.error(f"sync_user_from_master 에러: {e}", exc_info=True)
+            return {"success": False, "message": f"동기화 중 오류 발생: {str(e)}"}
     
     async def extract_message_content(
         self,

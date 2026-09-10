@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import select
 
 from app.core.database import SessionLocal
-from app.core.dependencies import graph_service
+from app.core.dependencies import bot_service
 from app.core.timezone import now_kst
 from app.models.domain import User
 from app.models.master_calendar import MasterCalendar, UserSyncLog
@@ -17,10 +17,16 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 
 
-async def _send_notice_to_single_user(user_id: str, schedule_items_info: List[Dict[str, Any]]):
+async def _send_notice_to_single_user(db: Session, user_id: str, schedule_items_info: List[Dict[str, Any]]):
     """
     개별 유저 대상 알림 메시지 포맷팅 및 발송 (Primitive Data만 전달받아 실행)
     """
+    user_stmt = select(User).where(User.id == user_id, User.is_active == True)
+    user = db.execute(user_stmt).scalar_one_or_none()
+
+    if not user or not user.conversation_id or not user.service_url:
+        logger.warning(f"User {user_id}의 Bot 대화 정보(conversation_id / service_url)가 없습니다.")
+        return {"success": False, "reason": "Bot conversation info missing", "count": 0}
     schedule_text_list = []
     for idx, item in enumerate(schedule_items_info, 1):
         # KST 시간 포맷팅 (HH:MM)
@@ -35,7 +41,7 @@ async def _send_notice_to_single_user(user_id: str, schedule_items_info: List[Di
     )
 
     try:
-        await graph_service.send_teams_chat_message(user_id=user_id, message=notice_message)
+        await bot_service.send_teams_reply(service_url=user.service_url,conversation_id=user.conversation_id,message=notice_message)
     except Exception as e:
         '''
         logger.error(f"User {user_id} 알림 발송 실패: {e}")
@@ -90,7 +96,7 @@ async def send_daily_notice_task():
 
             # 4. ORM 객체 생략 및 Primitive 데이터만 태스크로 전달
             tasks = [
-                _send_notice_to_single_user(user_id, schedules)
+                _send_notice_to_single_user(db, user_id, schedules)
                 for user_id, schedules in user_schedules_map.items()
             ]
 

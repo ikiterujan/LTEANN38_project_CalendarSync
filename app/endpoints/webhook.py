@@ -10,6 +10,7 @@ from sqlalchemy import select
 
 from app.core.database import get_db
 from app.models.domain import User
+from app.models.master_calendar import UserSyncLog
 from app.core.config import settings
 from app.core.dependencies import bot_service, graph_service, sync_service
 from cachetools import TTLCache
@@ -47,34 +48,43 @@ def calculate_grade_from_email(email: Optional[str], current_year: int) -> Optio
 async def cleanup_user_data(user_id: str, db: Session):
     """유저가 앱을 삭제/차단했을 때 Graph API 일정 삭제 및 DB 유저 완전 삭제"""
     try:
-        db_user = db.get(User, user_id)
+        # 1. DB에서 유저 조회 (select 사용)
+        user_stmt = select(User).where(User.id == user_id)
+        db_user = db.execute(user_stmt).scalar_one_or_none()
+        
         if not db_user:
             return
 
-        user_email = db_user.email
-        '''
-        logger.info(f"🗑️ [앱 삭제 감지] User({user_id}) | Email: {user_email} 삭제 절차 시작")
-        '''
+        # Graph API에서 요구하는 유저 식별자 (email 우선, 없으면 user_id)
+        target_graph_user = db_user.email if db_user.email else db_user.id
 
-        # 1. MS Graph API를 통해 우리가 등록했던 Extended Property 일정만 깔끔하게 삭제
-        deleted_events = await graph_service.delete_user_synced_events(user_id)
-        '''
-        logger.info(f"🗑️ [Graph API] {user_email} 유저의 캘린더 일정 {deleted_events}건 삭제 완료")
-        '''
+        # 2. DB SyncLog에서 해당 유저의 outlook_event_id 리스트 추출 (select 사용)
+        log_stmt = select(UserSyncLog.outlook_event_id).where(UserSyncLog.user_id == user_id)
+        event_ids = db.execute(log_stmt).scalars().all()
 
-        # 2. DB 유저 삭제 (cascade로 관련 mapping/logs 함께 삭제)
+        deleted_count = 0
+        if event_ids:
+            # DB 로그 기반 삭제
+            deleted_count = await graph_service.delete_events_by_ids(
+                user_id=target_graph_user, 
+                event_ids=event_ids
+            )
+        else:
+            # SyncLog가 없을 경우 Fallback: Extended Property 삭제 시도
+            deleted_count = await graph_service.delete_user_synced_events(
+                user_id=target_graph_user
+            )
+
+        logger.info(f"🗑️ [Graph API] 일정 {deleted_count}건 삭제 완료")
+
+        # 3. DB 유저 삭제 (Cascade 설정으로 관련 SyncLog, ChannelMapping 자동 삭제)
         db.delete(db_user)
         db.commit()
-        '''
-        logger.info(f"✅ [DB 유저 삭제 완료] User({user_id}) 데이터 완전 제거")
-        '''
-        logger.info(f"✅ [DB 유저 삭제 완료] 데이터 완전 제거")
+
+        logger.info("✅ [DB 유저 삭제 완료] 데이터 완전 제거")
 
     except Exception as e:
         db.rollback()
-        '''
-        logger.error(f"❌ 유저 삭제/정리 중 에러 발생 (User: {user_id}): {e}", exc_info=True)
-        '''
         logger.error(f"유저 삭제/정리 중 에러 발생: {e}", exc_info=True)
 
 @router.post("/api/messages")
