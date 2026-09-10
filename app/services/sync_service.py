@@ -10,6 +10,9 @@ from bs4 import BeautifulSoup
 import json
 import httpx
 import base64
+import pytesseract
+from PIL import Image
+import io
 
 from app.models.domain import User, UserChannelMapping
 from app.models.master_calendar import MasterCalendar, UserSyncLog
@@ -419,18 +422,18 @@ class SyncService:
     async def extract_message_content(
         self,
         msg_payload: Dict[str, Any],
-    ) -> Tuple[List[Dict[str, Any]], bool]:
+    ) -> Tuple[str, bool]:
         """
-        MS Teams 메시지 Payload에서 텍스트(본문+공지배너)와 이미지(Base64)를 파싱하여
-        OpenAI Vision API 규격(user content list)으로 변환합니다.
+        MS Teams 메시지 Payload에서 텍스트(본문+공지배너)와 이미지(OCR 텍스트)를 추출하여
+        단일 텍스트 프롬프트 문자열로 변환합니다.
         """
         raw_content = msg_payload.get("body", {}).get("content", "")
         content_type = msg_payload.get("body", {}).get("contentType", "text")
 
-        image_base64_list: List[str] = []
+        ocr_texts: List[str] = []
         clean_body = raw_content
 
-        # 1. HTML 본문 파싱 및 hostedContents 이미지 다운로드
+        # 1. HTML 본문 파싱 및 인라인 이미지 OCR 텍스트 추출
         if content_type.lower() == "html" and raw_content:
             soup = BeautifulSoup(raw_content, "html.parser")
             try:
@@ -440,15 +443,18 @@ class SyncService:
                     
                     for img in img_tags:
                         img_url = img.get("src")
-                        # Teams 내부에 인라인 저장된 이미지 추출
                         if img_url and "hostedContents" in img_url:
                             try:
                                 res = await self.graph._client.get(img_url, headers=headers, follow_redirects=True)
                                 if res.status_code == 200:
-                                    b64_img = base64.b64encode(res.content).decode("utf-8")
-                                    image_base64_list.append(b64_img)
+                                    # 바이너리 이미지를 바로 PIL Image로 열어 OCR 수행
+                                    image = Image.open(io.BytesIO(res.content))
+                                    extracted_text = pytesseract.image_to_string(image, lang='kor+eng').strip()
+                                    
+                                    if extracted_text:
+                                        ocr_texts.append(f"[첨부 이미지 내 텍스트]:\n{extracted_text}")
                             except Exception as e:
-                                logger.warning(f"이미지 다운로드 실패 ({img_url}): {e}")
+                                logger.warning(f"이미지 다운로드 및 OCR 실패 ({img_url}): {e}")
 
                 clean_body = soup.get_text(separator=" ", strip=True)
             finally:
@@ -473,32 +479,20 @@ class SyncService:
             elif isinstance(att_content, dict) and "title" in att_content:
                 attachment_texts.append(f"[공지 배너]: {att_content['title']}")
 
-        # 3. 본문 + 첨부 텍스트 병합
+        # 3. 본문 + 첨부 텍스트 + OCR 추출 텍스트 병합
         full_text_parts = []
         if clean_body:
             full_text_parts.append(clean_body)
         if attachment_texts:
             full_text_parts.append("\n".join(attachment_texts))
+        if ocr_texts:
+            full_text_parts.append("\n".join(ocr_texts))
 
         final_text_prompt = "\n\n".join(full_text_parts)
+        has_images = len(ocr_texts) > 0
 
-        # 텍스트 및 이미지가 모두 없는 빈 메시지 체크
-        if not final_text_prompt.strip() and not image_base64_list:
-            return [], False
+        # 텍스트가 아예 없으면 빈 값 반환
+        if not final_text_prompt.strip():
+            return "", False
 
-        # 4. OpenAI Vision API 규격으로 user content 구성
-        user_content: List[Dict[str, Any]] = [
-            {"type": "text", "text": f"새로 수신된 공지글 내용:\n{final_text_prompt}"}
-        ]
-
-        for b64_img in image_base64_list:
-            user_content.append({
-                "type": "image_url",
-                "image_url": {
-                    "url": f"data:image/png;base64,{b64_img}",
-                    "detail": "auto"
-                }
-            })
-
-        has_images = len(image_base64_list) > 0
-        return user_content, has_images
+        return final_text_prompt, has_images
