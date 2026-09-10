@@ -47,7 +47,7 @@ async def _process_single_channel_messages(channel_id: str, team_id: str):
     # 병렬 태스크별 독립 세션 생성 (세션 충돌 및 메모리 Stash 완벽 방지)
     with SessionLocal() as db:
         try:
-            lookback_minutes = get_calculated_lookback_minutes(db, channel_id)
+            lookback_minutes = await get_calculated_lookback_minutes(db, channel_id)
             messages: List[Dict[str, Any]] = await graph_service.get_channel_messages(
                 team_id=team_id,
                 channel_id=channel_id,
