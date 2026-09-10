@@ -409,3 +409,71 @@ class SyncService:
         db.delete(master_item)
         db.commit()
         db.expunge_all()
+        
+    async def sync_user_from_master(self, db: Session, user_id: str) -> dict:
+        """AI 호출 없이 MasterCalendar DB 기반으로 단일 유저 캘린더만 즉시 동기화"""
+        # 1. 유저 정보 조회
+        user = db.get(User, user_id)
+        if not user:
+            return {"success": False, "message": "유저 정보를 찾을 수 없습니다."}
+
+        # 2. 유저가 속한 채널 목록 가져오기
+        stmt_channels = select(UserChannelMapping.channel_id).where(
+            UserChannelMapping.user_id == user_id
+        )
+        channel_ids = db.execute(stmt_channels).scalars().all()
+
+        if not channel_ids:
+            return {"success": False, "message": "등록된 채널이 없습니다."}
+
+        # 3. 속한 채널들의 마스터 일정 전체 조회
+        stmt_masters = select(MasterCalendar).where(
+            MasterCalendar.source_channel_id.in_(channel_ids)
+        )
+        master_items = db.execute(stmt_masters).scalars().all()
+
+        # 4. 이미 동기화된 이력(UserSyncLog) 매핑 조회
+        stmt_logs = select(UserSyncLog.master_schedule_id, UserSyncLog.outlook_event_id).where(
+            UserSyncLog.user_id == user_id
+        )
+        existing_logs = {row[0]: row[1] for row in db.execute(stmt_logs).all()}
+
+        synced_count = 0
+        new_logs = []
+
+        # 5. 학년 매칭 검증 및 Outlook 캘린더 반영
+        for item in master_items:
+            target_grades = []
+            if item.grade1: target_grades.append(1)
+            if item.grade2: target_grades.append(2)
+            if item.grade3: target_grades.append(3)
+
+            # 유저 학년에 맞지 않으면 패스
+            if not _is_target_user(user.grade, target_grades):
+                continue
+
+            existing_evt_id = existing_logs.get(item.id)
+
+            if not existing_evt_id:
+                # 신규 일정 추가
+                log = await self._create_single_user_event(
+                    user_id=user.id,
+                    user_grade=user.grade,
+                    master_item_id=item.id,
+                    formatted_title=item.title,
+                    start_dt=item.start_datetime,
+                    end_dt=item.end_datetime,
+                    location=item.location,
+                    full_description=item.description,
+                    target_grades=target_grades
+                )
+                if log:
+                    new_logs.append(log)
+                    synced_count += 1
+
+        # 6. 신규 동기화 이력 저장
+        if new_logs:
+            db.add_all(new_logs)
+            db.commit()
+
+        return {"success": True, "synced_count": synced_count}
