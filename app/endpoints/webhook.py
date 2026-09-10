@@ -198,61 +198,65 @@ async def teams_event_webhook(
             )
 
         elif activity_type == "message":
-            # 1. 메시지 텍스트 추출 및 HTML/AtMention 태그 정제
-            raw_text = data.get("text", "") or ""
-            # 팀즈 @봇이름 태그(<at>...</at>) 및 공백 제거
-            clean_text = re.sub(r'<at>.*?</at>', '', raw_text).strip()
-
-            # 2. 커맨드 분기 처리
-            if clean_text in ("/help", "help"):
-                reply_text = (
-                    "**CalendarSync 사용 안내**\n\n"
-                    "• **자동 동기화**: 채널에 올라오는 공지사항을 AI가 분석하여 캘린더에 자동 등록합니다.\n"
-                    "• **지원 명령어**:\n"
-                    "  - '/help': 도움말 출력\n"
-                    "  - '/status': 서비스 연결 상태 및 서버 상태 확인\n"
-                    "  - '/sync': 수동 동기화 요청\n"
-                    "  - '/schedule': 오늘의 일정 불러오기\n\n"
-                    "* 서버 과부화 방지를 위해 명령어는 30초 타임아웃이 있습니다"
-                )
-
-            elif clean_text in ("/status", "status"):
-                reply_text = (
-                    f"🟢 **CalendarSync 서비스 상태: 정상**\n\n"
-                    f"• **등록 계정**: `{user_email or '미확인'}`\n"
-                    f"• **학년 정보**: `{user_grade}학년`" if user_grade else "• **학년 정보**: `일반`"
-                )
-
-            elif clean_text in ("/sync", "sync"):
-                result = await sync_service.sync_user_from_master(db, user_id)
-                reply_text = (
-                    "**수동 동기화 안내**\n\n"
-                    "수동으로 서버에서 일정을 가져와 캘린더에 동기화시킵니다.\n"
-                )
+            stmt_user = select(User.id, User.email, User.grade).where(User.id == user_id)
+            existing_user_row = db.execute(stmt_user).first()
             
-            elif clean_text in ("/schedule", "schedule"):
-                try:
-                    result = send_today_notice_to_user(db, user_id)
-                    return
-                except e:
-                    logger.error("디버깅",exc_info=True)
-            else:
-                # 지정된 커맨드가 아닌 일반 메시지를 보냈을 때의 기본 안내
-                reply_text = (
-                    "**CalendarSync 명령어 안내**\n\n"
-                    "이 봇은 백그라운드 자동 동기화 전용 서비스입니다.\n"
-                    "사용 가능한 명령어를 보시려면 **`/help`**을 입력해주세요."
+            if existing_user_row:
+                # 1. 메시지 텍스트 추출 및 HTML/AtMention 태그 정제
+                raw_text = data.get("text", "") or ""
+                # 팀즈 @봇이름 태그(<at>...</at>) 및 공백 제거
+                clean_text = re.sub(r'<at>.*?</at>', '', raw_text).strip()
+
+                # 2. 커맨드 분기 처리
+                if clean_text in ("/help", "help"):
+                    reply_text = (
+                        "**CalendarSync 사용 안내**\n\n"
+                        "• **자동 동기화**: 채널에 올라오는 공지사항을 AI가 분석하여 캘린더에 자동 등록합니다.\n"
+                        "• **지원 명령어**:\n"
+                        "  - '/help': 도움말 출력\n"
+                        "  - '/status': 서비스 연결 상태 및 서버 상태 확인\n"
+                        "  - '/sync': 수동 동기화 요청\n"
+                        "  - '/schedule': 오늘의 일정 불러오기\n\n"
+                        "* 서버 과부화 방지를 위해 명령어는 30초 타임아웃이 있습니다"
+                    )
+
+                elif clean_text in ("/status", "status"):
+                    reply_text = (
+                        f"🟢 **CalendarSync 서비스 상태: 정상**\n\n"
+                        f"• **등록 계정**: `{user_email or '미확인'}`\n"
+                        f"• **학년 정보**: `{user_grade}학년`" if user_grade else "• **학년 정보**: `일반`"
+                    )
+
+                elif clean_text in ("/sync", "sync"):
+                    result = await sync_service.sync_user_from_master(db, user_id)
+                    reply_text = (
+                        "**수동 동기화 안내**\n\n"
+                        "수동으로 서버에서 일정을 가져와 캘린더에 동기화시킵니다.\n"
+                    )
+                
+                elif clean_text in ("/schedule", "schedule"):
+                    try:
+                        result = send_today_notice_to_user(db, user_id)
+                        return
+                    except e:
+                        logger.error("디버깅",exc_info=True)
+                else:
+                    # 지정된 커맨드가 아닌 일반 메시지를 보냈을 때의 기본 안내
+                    reply_text = (
+                        "**CalendarSync 명령어 안내**\n\n"
+                        "이 봇은 백그라운드 자동 동기화 전용 서비스입니다.\n"
+                        "사용 가능한 명령어를 보시려면 **`/help`**을 입력해주세요."
+                    )
+
+                # 3. 비동기 백그라운드 답장 실행
+                background_tasks.add_task(
+                    bot_service.send_teams_reply,
+                    service_url,
+                    user_conversation_id,
+                    reply_text,
                 )
 
-            # 3. 비동기 백그라운드 답장 실행
-            background_tasks.add_task(
-                bot_service.send_teams_reply,
-                service_url,
-                user_conversation_id,
-                reply_text,
-            )
-
-        return {"status": "ok"}
+            return {"status": "ok"}
     except Exception as e:
         db.rollback()
         logger.error(f"❌ Teams Webhook 처리 중 에러 발생: {e}", exc_info=True)
