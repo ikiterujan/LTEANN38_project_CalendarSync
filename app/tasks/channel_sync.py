@@ -34,7 +34,7 @@ async def sync_user_channels_task():
     with SessionLocal() as db:
         try:
             # 1. ORM 인스턴스 대신 user_id(문자열)만 스칼라 쿼리 (메모리 Stash 차단)
-            stmt_users = select(User.id).where(User.is_active == True)
+            stmt_users = select(User.id)
             active_user_ids = db.execute(stmt_users).scalars().all()
 
             if not active_user_ids:

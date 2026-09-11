@@ -175,8 +175,6 @@ async def teams_event_webhook(
                     grade=user_grade,
                     conversation_id=user_conversation_id,
                     service_url=service_url,
-                    is_active=True,
-                    last_active_at=now_utc
                 )
                 db.add(new_user)
                 '''
@@ -195,8 +193,6 @@ async def teams_event_webhook(
                         db_user.conversation_id = user_conversation_id
                     if service_url:
                         db_user.service_url = service_url
-                    db_user.is_active = True
-                    db_user.last_active_at = now_utc
                     '''
                     logger.info(f"🔄 [유저 정보 갱신] User({user_id}) | Email: {user_email} | Grade: {user_grade}")
                     '''

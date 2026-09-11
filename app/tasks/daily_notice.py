@@ -21,7 +21,7 @@ async def _send_notice_to_single_user(db: Session, user_id: str, schedule_items_
     """
     개별 유저 대상 알림 메시지 포맷팅 및 발송 (Primitive Data만 전달받아 실행)
     """
-    user_stmt = select(User).where(User.id == user_id, User.is_active == True)
+    user_stmt = select(User).where(User.id == user_id)
     user = db.execute(user_stmt).scalar_one_or_none()
 
     if not user or not user.conversation_id or not user.service_url:
@@ -72,7 +72,6 @@ async def send_daily_notice_task():
                 .join(MasterCalendar, UserSyncLog.master_schedule_id == MasterCalendar.id)
                 .join(User, UserSyncLog.user_id == User.id)
                 .where(
-                    User.is_active == True,
                     MasterCalendar.start_datetime >= start_of_day,
                     MasterCalendar.start_datetime <= end_of_day
                 )

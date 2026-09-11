@@ -31,7 +31,6 @@ def get_single_user_today_schedules(db: Session, user_id: str) -> List[Dict[str,
         .join(User, UserSyncLog.user_id == User.id)
         .where(
             UserSyncLog.user_id == user_id,
-            User.is_active == True,
             MasterCalendar.start_datetime >= start_of_day,
             MasterCalendar.start_datetime <= end_of_day
         )
@@ -73,7 +72,7 @@ def format_schedule_message(schedules: List[Dict[str, Any]]) -> str:
 async def send_today_notice_to_user(db: Session, user_id: str) -> Dict[str, Any]:
     """[즉시 발송용] 단일 유저의 오늘 일정을 조회하여 Teams 챗 메시지로 전송"""
     try:
-        user_stmt = select(User).where(User.id == user_id, User.is_active == True)
+        user_stmt = select(User).where(User.id == user_id)
         user = db.execute(user_stmt).scalar_one_or_none()
     
         if not user or not user.conversation_id or not user.service_url:

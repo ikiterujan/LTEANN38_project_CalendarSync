@@ -134,8 +134,7 @@ class SyncService:
             select(User.id, User.grade)
             .join(UserChannelMapping, User.id == UserChannelMapping.user_id)
             .where(
-                UserChannelMapping.channel_id == channel_id,
-                User.is_active == True
+                UserChannelMapping.channel_id == channel_id
             )
         )
         channel_users = db.execute(stmt).all()

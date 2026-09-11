@@ -38,25 +38,6 @@ class User(Base):
     # Teams 1:1 대화 및 웹훅 발송용 필드
     conversation_id = Column(String(255), unique=True, nullable=True)
     service_url = Column(String(255), nullable=True)
-    
-    # Oracle 호환: BOOLEAN -> NUMBER(1) 자동 대응 및 DB 레벨 Default 설정
-    is_active = Column(
-        Boolean, 
-        default=True, 
-        server_default="1", 
-        nullable=False
-    )
-    
-    last_active_at = Column(
-        DateTime(timezone=True), 
-        server_default=func.now(), 
-        server_onupdate=func.now()
-    )
-    created_at = Column(
-        DateTime(timezone=True), 
-        server_default=func.now(), 
-        nullable=False
-    )
 
     channels = relationship(
         "Channel", 
