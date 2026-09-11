@@ -18,6 +18,7 @@ from app.models.domain import User, UserChannelMapping
 from app.models.master_calendar import MasterCalendar, UserSyncLog
 from app.schemas.llm_schema import ScheduleAction, RAGAnalysisResult
 from app.services.graph_service import GraphService
+from app.services.ocr_service import EasyOCRService
 from app.utils.teams import build_teams_message_link
 
 logger = logging.getLogger(__name__)
@@ -113,8 +114,9 @@ def _split_long_term_actions(actions: List[ScheduleAction]) -> List[ScheduleActi
     return processed_actions
 
 class SyncService:
-    def __init__(self, graph_service: GraphService):
+    def __init__(self, graph_service: GraphService, ocr_service: EasyOCRService):
         self.graph = graph_service
+        self.ocr_service = ocr_service
 
     def _generate_content_hash(self, formatted_title: str, action: ScheduleAction) -> str:
         raw_str = f"{formatted_title}|{action.start_datetime}|{action.end_datetime}|{action.location}|{action.description}"
@@ -447,9 +449,8 @@ class SyncService:
                             try:
                                 res = await self.graph._client.get(img_url, headers=headers, follow_redirects=True)
                                 if res.status_code == 200:
-                                    # 바이너리 이미지를 바로 PIL Image로 열어 OCR 수행
-                                    image = Image.open(io.BytesIO(res.content))
-                                    extracted_text = pytesseract.image_to_string(image, lang='kor+eng').strip()
+                                    # EasyOCRService를 사용하여 bytes에서 바로 텍스트 추출
+                                    extracted_text = self.ocr_service.extract_text(res.content)
                                     
                                     if extracted_text:
                                         ocr_texts.append(f"[첨부 이미지 내 텍스트]:\n{extracted_text}")
