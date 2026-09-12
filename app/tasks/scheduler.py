@@ -32,7 +32,7 @@ def start_scheduler():
         return
 
     now = now_kst()
-    delay_time = now + timedelta(minutes=30)
+    delay_time = now + timedelta(hours=2)
     debug_time1 = now + timedelta(minutes=1)
     debug_time2 = now + timedelta(minutes=3)
 
@@ -64,8 +64,8 @@ def start_scheduler():
     scheduler.add_job(
         send_daily_notice_task,
         "cron",
-        hour=7,
-        minute=5,
+        hour=8,
+        minute=55,
         id="daily_notice_job",
         replace_existing=True
     )
