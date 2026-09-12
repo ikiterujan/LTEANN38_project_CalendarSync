@@ -1,6 +1,6 @@
 #app/models/master_calendar.py
 import uuid
-from sqlalchemy import Column, String, DateTime, ForeignKey, func, Boolean
+from sqlalchemy import Column, String, DateTime, ForeignKey, func, Boolean, UniqueConstraint
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
@@ -40,7 +40,7 @@ class MasterCalendar(Base):
     updated_at = Column(
         DateTime(timezone=True), 
         server_default=func.now(), 
-        server_onupdate=func.now()
+        onupdate=func.now()
     )
 
     channel = relationship("Channel", back_populates="master_schedules")
@@ -53,10 +53,14 @@ class MasterCalendar(Base):
 
 class UserSyncLog(Base):
     __tablename__ = "user_sync_logs"
+    __table_args__ = (
+        # 중복 동기화(Outlook Event 중복 생성) 방지용 유니크 제약조건
+        UniqueConstraint("user_id", "master_schedule_id", name="uq_user_master_schedule"),
+    )
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     user_id = Column(
-        String(100), 
+        String(255), 
         ForeignKey("users.id", ondelete="CASCADE"), 
         nullable=False
     )
@@ -69,7 +73,7 @@ class UserSyncLog(Base):
     synced_at = Column(
         DateTime(timezone=True), 
         server_default=func.now(), 
-        server_onupdate=func.now()
+        onupdate=func.now()
     )
 
     user = relationship("User", back_populates="sync_logs")

@@ -1,6 +1,5 @@
-#app/schemas/llm_schema.py
 from typing import List, Optional, Literal
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class ScheduleAction(BaseModel):
@@ -9,28 +8,48 @@ class ScheduleAction(BaseModel):
         description="CREATE: 새 일정 추가, UPDATE: 기존 일정 수정, DELETE: 일정 취소, SKIP: 변경없음 또는 중복"
     )
     master_schedule_id: Optional[str] = Field(
-        None, 
+        default=None, 
         description="UPDATE 또는 DELETE일 경우 대상 MasterCalendar ID (CREATE/SKIP일 경우 None)"
     )
     
     title: str = Field(..., description="일정 제목")
-    start_datetime: Optional[str] = Field(..., description="시작 일시 (ISO 8601 형식: YYYY-MM-DDTHH:MM:SS)")
-    end_datetime: Optional[str] = Field(..., description="종료 일시 (ISO 8601 형식: YYYY-MM-DDTHH:MM:SS)")
+    start_datetime: Optional[str] = Field(
+        default=None, 
+        description="시작 일시 (ISO 8601 형식: YYYY-MM-DDTHH:MM:SS)"
+    )
+    end_datetime: Optional[str] = Field(
+        default=None, 
+        description="종료 일시 (ISO 8601 형식: YYYY-MM-DDTHH:MM:SS)"
+    )
     
     @field_validator('start_datetime', 'end_datetime', mode='before')
+    @classmethod
     def empty_string_to_none(cls, v):
-        # 빈 문자열("")이나 공백 문자열이 들어오면 None으로 변환
         if isinstance(v, str) and not v.strip():
             return None
         return v
-    
-    # DB의 EncryptedString 컬럼 매핑 시 None 및 빈 값 방어
-    location: Optional[str] = Field(None, description="장소 (없을 시 None)")
-    description: Optional[str] = Field(None, description="일정 상세 내용 및 주의사항")
+
+    @field_validator('target_grades')
+    @classmethod
+    def validate_grades(cls, v: List[int]) -> List[int]:
+        # 학년 범위 유효성 검증 (1~3학년)
+        valid_grades = [g for g in v if 1 <= g <= 3]
+        return valid_grades
+
+    @model_validator(mode='after')
+    def validate_action_requirements(self):
+        # CREATE나 UPDATE일 때는 반드시 start_datetime이 존재해야 함
+        if self.action in ["CREATE", "UPDATE"]:
+            if not self.start_datetime:
+                raise ValueError(f"{self.action} 작업에는 start_datetime이 필수입니다.")
+        return self
+
+    location: Optional[str] = Field(default=None, description="장소 (없을 시 None)")
+    description: Optional[str] = Field(default=None, description="일정 상세 내용 및 주의사항")
     
     target_grades: List[int] = Field(
         default_factory=list, 
-        description="대상 학년 목록 (예: [1, 2], 전학년 공지인 경우 [1, 2, 3, 4])"
+        description="대상 학년 목록 (예: [1, 2], 전학년 공지인 경우 [1, 2, 3])"
     )
     reason: str = Field(..., description="해당 액션을 결정한 이유 (디버깅 및 로그용)")
 

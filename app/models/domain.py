@@ -1,5 +1,4 @@
 #app/models/domain.py
-# app/models/domain.py
 from sqlalchemy import Column, String, Integer, DateTime, Boolean, ForeignKey, func
 from sqlalchemy.orm import relationship
 
@@ -11,12 +10,12 @@ class UserChannelMapping(Base):
     __tablename__ = "user_channel_mappings"
 
     user_id = Column(
-        String(100), 
+        String(255), 
         ForeignKey("users.id", ondelete="CASCADE"), 
         primary_key=True
     )
     channel_id = Column(
-        String(100), 
+        String(255), 
         ForeignKey("channels.channel_id", ondelete="CASCADE"), 
         primary_key=True
     )
@@ -31,7 +30,7 @@ class User(Base):
     """사용자 정보"""
     __tablename__ = "users"
 
-    id = Column(String(100), primary_key=True)  # MS Graph User ID / Teams User ID
+    id = Column(String(255), primary_key=True)  # MS Graph User ID / Teams User ID
     email = Column(String(255), nullable=True, unique=True)  # Teams 웹훅 대응을 위해 nullable=True 설정
     grade = Column(Integer, nullable=True)
     
@@ -56,14 +55,14 @@ class Channel(Base):
     """팀즈 채널 정보"""
     __tablename__ = "channels"
 
-    channel_id = Column(String(100), primary_key=True)  # Teams Channel ID
-    team_id = Column(String(100), nullable=False)
+    channel_id = Column(String(255), primary_key=True)  # Teams Channel ID
+    team_id = Column(String(255), nullable=False)
     channel_name = Column(String(255), nullable=True)
     
     updated_at = Column(
         DateTime(timezone=True), 
         server_default=func.now(), 
-        server_onupdate=func.now()
+        onupdate=func.now()
     )
     
     last_synced_at = Column(DateTime(timezone=True), nullable=True)

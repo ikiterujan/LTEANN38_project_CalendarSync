@@ -45,14 +45,6 @@ def _parse_datetime(dt_str: Optional[str]) -> Optional[datetime]:
         return None
 
 
-def _format_title(subject: Optional[str], title: str) -> str:
-    """[방법 B] [Subject] Title 포맷팅"""
-    if subject and subject.strip():
-        clean_subj = subject.strip().replace("[", "").replace("]", "")
-        return f"[{clean_subj}] {title.strip()}"
-    return title.strip()
-
-
 def _build_full_description(description: Optional[str], teams_link: Optional[str]) -> str:
     """본문 하단에 Teams 원본 메시지 링크 결합"""
     desc_parts = []
@@ -260,7 +252,6 @@ class SyncService:
         if valid_logs:
             db.add_all(valid_logs)
         db.commit()
-        db.expunge_all()
 
     # ------------------------------------------------------------------
     # [UPDATE]
@@ -342,7 +333,7 @@ class SyncService:
             logger.warning(f"[UPDATE SKIP] 유효하지 않은 날짜")
             return
 
-        formatted_title = _format_title(action.subject, action.title)
+        formatted_title = action.title.strip()
         full_description = _build_full_description(action.description, teams_link)
 
         master_item.title = formatted_title
@@ -376,7 +367,6 @@ class SyncService:
             db.add_all(new_logs)
 
         db.commit()
-        db.expunge_all()
 
     # ------------------------------------------------------------------
     # [DELETE]
@@ -417,7 +407,6 @@ class SyncService:
 
         db.delete(master_item)
         db.commit()
-        db.expunge_all()
         
     
     async def extract_message_content(

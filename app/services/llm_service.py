@@ -1,10 +1,10 @@
-#app/services/llm_service.py
 import json
 import logging
 from typing import List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 from openai import AsyncOpenAI
+from starlette.concurrency import run_in_threadpool  # Async 내 Sync DB 처리용
 
 from app.models.master_calendar import MasterCalendar
 from app.schemas.master_calendar import MasterScheduleContext
@@ -26,7 +26,6 @@ class LLMService:
         EncryptedString에 의해 title, location, description은 이미 자동으로 복호화된 상태입니다.
         """
         
-        # 1. ORM 객체 매핑 대신 핀포인트 select 프로젝션 (EncryptedString 자동 복호화 적용됨)
         stmt = select(
             MasterCalendar.id,
             MasterCalendar.title,
@@ -43,23 +42,22 @@ class LLMService:
 
         context_list = []
         for row in rows:
-            # datetime 필드 isoformat 변환 처리 및 Pydantic 매핑
             row_dict = dict(row)
             target_grades = []
             if row_dict.pop("grade1", False): target_grades.append(1)
             if row_dict.pop("grade2", False): target_grades.append(2)
             if row_dict.pop("grade3", False): target_grades.append(3)
             row_dict["target_grades"] = target_grades
+            
             if row_dict.get("start_datetime"):
                 row_dict["start_datetime"] = row_dict["start_datetime"].isoformat()
             if row_dict.get("end_datetime"):
                 row_dict["end_datetime"] = row_dict["end_datetime"].isoformat()
 
-            # MasterScheduleContext (pydantic v2 model_config 적용됨) 변환
             context_obj = MasterScheduleContext.model_validate(row_dict)
             context_list.append(context_obj.model_dump())
 
-        db.expunge_all()  # 세션 캐시 즉시 비우기
+        # db.expunge_all() 제거: 상위 트랜잭션 세션 오염 방지
         return context_list
 
     async def analyze_message_with_rag(
@@ -73,13 +71,16 @@ class LLMService:
         if current_year is None:
             current_year = now_kst().year
 
-        # 1. RAG Context 추출 (자동 복호화된 평문 텍스트 반환)
-        existing_schedules = self._get_existing_schedules_context(db, channel_id)
+        # 1. RAG Context 추출 (Async 루프 블로킹 방지를 위해 run_in_threadpool 사용)
+        existing_schedules = await run_in_threadpool(
+            self._get_existing_schedules_context, db, channel_id
+        )
+        
         context_json_str = json.dumps(
             existing_schedules, ensure_ascii=False, indent=2
         )
 
-        # 2. RAG System Prompt 작성
+        # 2. RAG System Prompt 작성 (키워드 actions 통일 및 f-string 중괄호 버그 수정)
         system_prompt = f"""너는 대학 및 학사 공지사항을 분석하여 마스터 캘린더를 최신 상태로 관리하는 고성능 AI 도우미다.
 기준 연도는 {current_year}년이다.
 
@@ -113,8 +114,8 @@ class LLMService:
 - 6교시: 14:10 ~ 15:00
 - 7교시: 15:10 ~ 16:00
 
-6. 하나의 메시지에 여러 일정(예: 1차 제출, 2차 제출)이 있거나, 번호로 나열되거나 서로 다른 주제, 날짜가 있으면 누락 없이 각각 독립된 객체로 분리하여 `schedules` 배열에 담아줘.
-- 예시: "6/5 수학 발표, 물리 수행, 6/12 보고서 제출" -> schedules에 3개 객체 생성
+6. 하나의 메시지에 여러 일정(예: 1차 제출, 2차 제출)이 있거나, 번호로 나열되거나 서로 다른 주제, 날짜가 있으면 누락 없이 각각 독립된 객체로 분리하여 `actions` 배열에 담아줘.
+- 예시: "6/5 수학 발표, 물리 수행, 6/12 보고서 제출" -> actions에 3개 객체 생성
 
 =========================================
 [2. RAG C/U/D 판정 로직]
@@ -165,11 +166,12 @@ class LLMService:
                     },
                 ],
                 response_format=RAGAnalysisResult,
-                temperature=0.0,  # 결정론적 판단을 위해 0으로 고정
+                temperature=0.0,
                 seed=42,
             )
 
             result: RAGAnalysisResult = response.choices[0].message.parsed
+            
             '''
             logger.info(
                 f"[{channel_id}] RAG 분석 완료 - 추출된 액션 수: {len(result.actions)}개"
