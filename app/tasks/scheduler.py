@@ -32,7 +32,7 @@ def start_scheduler():
         return
 
     now = now_kst()
-    delay_time = now + timedelta(minutes=10)
+    delay_time = now + timedelta(minutes=5)
     debug_time1 = now + timedelta(minutes=1)
     debug_time2 = now + timedelta(minutes=3)
 
