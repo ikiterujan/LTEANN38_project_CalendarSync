@@ -114,16 +114,9 @@ class GraphService:
         
     async def _get_all_pages(self, url: str) -> List[Dict[str, Any]]:
         items: List[Dict[str, Any]] = []
-        headers = await self._get_headers()
 
         while url:
-            res = await self._client.get(url, headers=headers)
-            if res.status_code == 401:
-                self._access_token = None
-                await self._get_access_token()
-                headers = await self._get_headers()
-                res = await self._client.get(url, headers=headers)
-
+            res = await self._request_with_retry("GET", url)
             res.raise_for_status()
             data = res.json()
             items.extend(data.get("value", []))
