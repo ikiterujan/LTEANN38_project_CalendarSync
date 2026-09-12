@@ -32,7 +32,7 @@ def start_scheduler():
         return
 
     now = now_kst()
-    delay_time = now + timedelta(minutes=30)
+    delay_time = now + timedelta(minutes=10)
     debug_time1 = now + timedelta(minutes=1)
     debug_time2 = now + timedelta(minutes=3)
 
@@ -40,8 +40,8 @@ def start_scheduler():
     scheduler.add_job(
         sync_user_channels_task,
         "interval",
-        #hours=settings.CHANNEL_SYNC_INTERVAL_HOURS,
-        minutes=4,
+        hours=settings.CHANNEL_SYNC_INTERVAL_HOURS,
+        #minutes=4,
         id="channel_sync_job",
         next_run_time=now, # 서버 구동 즉시 최초 1회 실행
         #next_run_time=debug_time1,
@@ -52,8 +52,8 @@ def start_scheduler():
     scheduler.add_job(
         sync_channel_messages_task,
         "interval",
-        #hours=settings.MESSAGE_SYNC_INTERVAL_HOURS,
-        minutes=4,
+        hours=settings.MESSAGE_SYNC_INTERVAL_HOURS,
+        #minutes=4,
         id="message_sync_job",
         next_run_time=delay_time,   # 서버 구동 즉시 최초 1회 실행
         #next_run_time=debug_time2,
