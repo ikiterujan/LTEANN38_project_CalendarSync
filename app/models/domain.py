@@ -65,7 +65,6 @@ class Channel(Base):
         onupdate=func.now()
     )
     
-    initial_sync_status = Column(String, default="PENDING")
     last_synced_at = Column(DateTime(timezone=True), nullable=True)
 
     users = relationship(
