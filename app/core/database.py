@@ -20,8 +20,9 @@ engine = create_engine(
         "wallet_location": settings.WALLET_DIR,
         "wallet_password": settings.DB_PASSWORD,
     },
-    pool_size=10,             # 커넥션 풀 기본 크기
-    max_overflow=20,          # 순간 부하 시 추가 허용 커넥션
+    pool_size=30,             # 커넥션 풀 기본 크기
+    max_overflow=50,# 순간 부하 시 추가 허용 커넥션
+    pool_timeout=60,
     pool_recycle=1800,        # 30분마다 커넥션 재생성 (Oracle Timeout 방지)
     pool_pre_ping=True        # 끊어진 커넥션 감지 후 자동 재연결
 )
