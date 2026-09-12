@@ -108,20 +108,35 @@ async def sync_channel_messages_task():
     with SessionLocal() as db:
         try:
             # 1. ORM 객체 전체 대신 필요 필드만 튜플로 스칼라 쿼리 (메모리 경량화)
-            stmt = select(Channel.channel_id, Channel.team_id)
+            stmt = (
+                select(Channel.channel_id, Channel.team_id)
+                .order_by(Channel.last_synced_at.asc().nullsfirst())
+            )
             channels: List[Tuple[str, str]] = db.execute(stmt).all()
 
             if not channels:
                 logger.info("동기화 대상 채널이 없습니다.")
                 return
 
-            # 2. Primitive 값(channel_id, team_id)만 전달하여 병렬 실행
-            tasks = [
-                _process_single_channel_messages(ch_id, team_id)
-                for ch_id, team_id in channels
-            ]
+            total_channels = len(channels)
+            total_batches = (total_channels + settings.MESSAGE_SYNC_BATCH_SIZE - 1) // settings.MESSAGE_SYNC_BATCH_SIZE
             
-            await asyncio.gather(*tasks, return_exceptions=True)
+            for i in range(0, total_channels, settings.MESSAGE_SYNC_BATCH_SIZE):
+                batch = channels[i : i + settings.MESSAGE_SYNC_BATCH_SIZE]
+                current_batch_num = (i // settings.MESSAGE_SYNC_BATCH_SIZE) + 1
+                
+                logger.info(f"[Batch {current_batch_num}/{total_batches}] {len(batch)}개 채널 동기화 중...")
+                
+                # 2. Primitive 값(channel_id, team_id)만 전달하여 병렬 실행
+                tasks = [
+                    _process_single_channel_messages(ch_id, team_id)
+                    for ch_id, team_id in batch
+                ]
+                
+                await asyncio.gather(*tasks, return_exceptions=True)
+                
+                if i + settings.MESSAGE_SYNC_BATCH_SIZE < total_channels:
+                    await asyncio.sleep(settings.BATCH_DELAY_SECONDS)
             logger.info("메시지 및 일정 동기화 태스크 완료 (병렬 처리)")
 
         except Exception as e:

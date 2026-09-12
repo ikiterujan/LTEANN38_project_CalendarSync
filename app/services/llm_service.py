@@ -1,5 +1,6 @@
 import json
 import logging
+import asyncio
 from typing import List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import select
@@ -12,13 +13,30 @@ from app.schemas.master_calendar import MasterScheduleContext
 from app.schemas.llm_schema import RAGAnalysisResult
 from app.core.timezone import now_kst
 
+from tenacity import retry, stop_after_attempt, wait_random_exponential, retry_if_exception_type
+import openai
+
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 
 
 class LLMService:
-    def __init__(self, openai_client: AsyncOpenAI):
+    def __init__(self, openai_client: AsyncOpenAI, max_concurrent_requests: int = 4):
         self.client = openai_client
+        self._semaphore = asyncio.Semaphore(max_concurrent_requests)
+        
+    @retry(
+        retry=retry_if_exception_type(openai.RateLimitError),
+        wait=wait_random_exponential(min=1, max=60), # 1초~60초 사이 지수적으로 대기시간 증가
+        stop=stop_after_attempt(5), # 최대 5회 재시도
+        before_sleep=lambda retry_state: logger.warning(
+            f"[OpenAI RateLimit] 429 에러 발생. {retry_state.next_action.sleep}초 후 재시도합니다... (시도 {retry_state.attempt_number})"
+        )
+    )
+    async def _call_gpt_with_retry(self, **kwargs):
+        """Semaphore와 Retry가 적용된 GPT 호출 internal 메서드"""
+        async with self._semaphore:
+            return await self.client.chat.completions.parse(**kwargs)
 
     def _get_existing_schedules_context(
         self, db: Session, channel_id: str
@@ -166,7 +184,7 @@ class LLMService:
 
         try:
             # 3. GPT-4o-mini Structured Output 호출
-            response = await self.client.beta.chat.completions.parse(
+            response = await self._call_gpt_with_retry(
                 model="gpt-4o-mini",
                 messages=[
                     {"role": "system", "content": system_prompt},
