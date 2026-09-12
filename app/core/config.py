@@ -33,7 +33,6 @@ class Settings(BaseSettings):
 
     # Sync Pipeline Schedules
     CHANNEL_SYNC_INTERVAL_HOURS: int = 4
-    MASTER_SYNC_INTERVAL_HOURS: int = 2
     MESSAGE_SYNC_INTERVAL_HOURS: int = 1
     MESSAGE_SYNC_LOOKBACK_BUFFER_MINUTES: int = 30
     MESSAGE_SYNC_INITIAL_LOOKBACK_DAYS: int = 30
