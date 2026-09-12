@@ -4,6 +4,7 @@ from typing import List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 from openai import AsyncOpenAI
+from datetime import timedelta
 from starlette.concurrency import run_in_threadpool  # Async 내 Sync DB 처리용
 
 from app.models.master_calendar import MasterCalendar
@@ -25,18 +26,27 @@ class LLMService:
         """[RAG Retrieval] ORM 메모리 Overhead 없이 핀포인트 select 프로젝션 수행.
         EncryptedString에 의해 title, location, description은 이미 자동으로 복호화된 상태입니다.
         """
-        
-        stmt = select(
-            MasterCalendar.id,
-            MasterCalendar.title,
-            MasterCalendar.start_datetime,
-            MasterCalendar.end_datetime,
-            MasterCalendar.location,
-            MasterCalendar.description,
-            MasterCalendar.grade1,
-            MasterCalendar.grade2,
-            MasterCalendar.grade3,
-        ).where(MasterCalendar.source_channel_id == channel_id)
+        now = now_kst()
+        search_start = now - timedelta(days=30)
+        search_end = now + timedelta(days=180)
+        stmt = (
+            select(
+                MasterCalendar.id,
+                MasterCalendar.title,
+                MasterCalendar.start_datetime,
+                MasterCalendar.end_datetime,
+                MasterCalendar.location,
+                MasterCalendar.description,
+                MasterCalendar.grade1,
+                MasterCalendar.grade2,
+                MasterCalendar.grade3,
+            )
+            .where(MasterCalendar.source_channel_id == channel_id,
+                    MasterCalendar.end_datetime >= search_start,
+                    MasterCalendar.start_datetime <= search_end,
+            )
+            .order_by(MasterCalendar.start_datetime.asc())
+        )
 
         rows = db.execute(stmt).mappings().all()
 
