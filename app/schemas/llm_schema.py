@@ -38,10 +38,11 @@ class ScheduleAction(BaseModel):
 
     @model_validator(mode='after')
     def validate_action_requirements(self):
-        # CREATE나 UPDATE일 때는 반드시 start_datetime이 존재해야 함
-        if self.action in ["CREATE", "UPDATE"]:
-            if not self.start_datetime:
-                raise ValueError(f"{self.action} 작업에는 start_datetime이 필수입니다.")
+        # CREATE나 UPDATE 작업인데 필수 필드인 start_datetime이 없으면
+        # 프로세스를 에러로 멈추지 않고 action을 'NONE'으로 안전하게 전환합니다.
+        if self.action in ["CREATE", "UPDATE"] and not self.start_datetime:
+            self.action = "NONE"
+            self.reason = f"[{self.action} 스킵] start_datetime이 누락되어 일정을 처리할 수 없습니다."
         return self
 
     location: Optional[str] = Field(default=None, description="장소 (없을 시 None)")
