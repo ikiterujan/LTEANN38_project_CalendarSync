@@ -98,3 +98,32 @@ class BotService:
                 f"[BotService] 메시지 발송 성공 (Conversation: {conversation_id})"
             )
             '''
+    async def create_or_get_conversation(
+        self, service_url: str, user_id: str, tenant_id: str
+    ) -> Optional[str]:
+        """user_id를 기반으로 새 봇 기준 1:1 대화방 생성 및 conversation_id 반환"""
+        try:
+            token = await self._get_access_token()
+            base_url = service_url.rstrip("/")
+            endpoint = f"{base_url}/v3/conversations"
+
+            headers = {
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json",
+            }
+
+            payload = {
+                "bot": {"id": self.client_id},
+                "members": [{"id": user_id}],
+                "channelData": {"tenant": {"id": tenant_id}},
+            }
+
+            res = await self._client.post(endpoint, headers=headers, json=payload)
+            res.raise_for_status()
+
+            # 새로 발급된 conversation_id
+            return res.json().get("id")
+
+        except Exception as e:
+            logger.error(f"[BotService] 대화방 생성 실패 (User: {user_id}): {e}")
+            return None
