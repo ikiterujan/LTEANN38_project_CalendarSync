@@ -64,7 +64,7 @@ def start_scheduler():
     scheduler.add_job(
         send_daily_notice_task,
         "cron",
-        hour=11,
+        hour=7,
         minute=0,
         id="daily_notice_job",
         replace_existing=True

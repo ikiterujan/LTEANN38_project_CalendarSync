@@ -27,18 +27,23 @@ async def _send_notice_to_single_user(db: Session, user_id: str, schedule_items_
     if not user or not user.conversation_id or not user.service_url:
         logger.warning(f"User {user_id}의 Bot 대화 정보(conversation_id / service_url)가 없습니다.")
         return {"success": False, "reason": "Bot conversation info missing", "count": 0}
-    schedule_text_list = []
-    for idx, item in enumerate(schedule_items_info, 1):
-        # KST 시간 포맷팅 (HH:MM)
-        time_str = item["start_dt"].strftime("%H:%M")
-        loc_str = f" ({item['location']})" if item.get("location") else ""
-        schedule_text_list.append(f"{idx}. **{item['title']}** - {time_str}{loc_str}")
+    if schedule_items_info:
+        schedule_text_list = []
+        for idx, item in enumerate(schedule_items_info, 1):
+            time_str = item["start_dt"].strftime("%H:%M")
+            loc_str = f" ({item['location']})" if item.get("location") else ""
+            schedule_text_list.append(f"{idx}. **{item['title']}** - {time_str}{loc_str}")
 
-    notice_message = (
-        f"📅 **[오늘의 일정 알림]**\n\n"
-        f"안녕하세요! 오늘 예정된 공지 일정이 총 {len(schedule_items_info)}건 있습니다:\n\n"
-        + "\n".join(schedule_text_list)
-    )
+        notice_message = (
+            f"**[오늘의 일정 알림]**\n\n"
+            f"안녕하세요! 오늘 예정된 일정이 총 {len(schedule_items_info)}건 있습니다:\n\n"
+            + "\n".join(schedule_text_list)
+        )
+    else:
+        notice_message = (
+            f"**[오늘의 일정 알림]**\n\n"
+            f"안녕하세요! 오늘 예정된 공지 일정이 없습니다. 좋은 하루 보내세요!"
+        )
 
     try:
         await bot_service.send_teams_reply(service_url=user.service_url,conversation_id=user.conversation_id,message=notice_message)
@@ -59,6 +64,12 @@ async def send_daily_notice_task():
             start_of_day = today_kst.replace(hour=0, minute=0, second=0, microsecond=0)
             end_of_day = today_kst.replace(hour=23, minute=59, second=59, microsecond=999999)
 
+            all_users_stmt = select(User.id).where(
+                User.conversation_id.isnot(None),
+                User.service_url.isnot(None)
+            )
+            all_user_ids = db.execute(all_users_stmt).scalars().all()
+            
             # 2. N+1 쿼리 방지: 단 1회의 JOIN 쿼리로 오늘 일정이 있는 유저들의 스칼라 데이터만 일괄 조회
             #    (EncryptedString 타입인 title, location은 TypeDecorator에 의해 자동 복호화 처리됨)
             stmt = (
@@ -85,7 +96,7 @@ async def send_daily_notice_task():
                 return
 
             # 3. 조회 결과를 유저 ID별로 Grouping (메모리 내 딕셔너리 정렬)
-            user_schedules_map: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+            user_schedules_map: Dict[str, List[Dict[str, Any]]] = {u_id: [] for u_id in all_user_ids}
             for user_id, title, start_dt, location in results:
                 user_schedules_map[user_id].append({
                     "title": title,
