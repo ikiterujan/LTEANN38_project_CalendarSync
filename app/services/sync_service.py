@@ -10,7 +10,6 @@ from bs4 import BeautifulSoup
 import json
 import httpx
 import base64
-import pytesseract
 from PIL import Image
 import io
 
