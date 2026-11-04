@@ -19,6 +19,7 @@ httpx==0.28.1
 idna==3.20
 jiter==0.18.0
 msal==1.31.1
+numpy==2.2.6
 openai==1.59.6
 oracledb==2.5.1
 pillow==12.3.0
