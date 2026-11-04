@@ -280,29 +280,22 @@ class GraphService:
         property_name: str = "CalendarSyncApp", 
         property_value: str = "CalendarSync_2026"
     ) -> int:
-        """Extended Property 식별자를 Expand하여 안전하게 일괄 삭제"""
         property_guid = "fbd4ec16-7f0f-46d2-a9db-f32258a48607"
         prop_id = f"String {{{property_guid}}} Name {property_name}"
 
-        # $expand 구문으로 singleValueExtendedProperties를 함께 조회
+        # OData filter를 사용하여 해당 속성을 가진 이벤트만 정확히 가져옵니다
+        filter_query = f"singleValueExtendedProperties/Any(ep: ep/id eq '{prop_id}' and ep/value eq '{property_value}')"
+        
         url = (
             f"https://graph.microsoft.com/v1.0/users/{user_id}/events"
             f"?$select=id,subject"
-            f"&\(expand=singleValueExtendedProperties(\)filter=id eq '{prop_id}')"
+            f"&$filter={filter_query}"
             f"&$top=100"
         )
 
         try:
-            fetched_events = await self._get_all_pages(url)
-            
-            # App 식별자 속성값이 일치하는 일정만 필터링
-            events_to_delete = []
-            for ev in fetched_events:
-                ext_props = ev.get("singleValueExtendedProperties", [])
-                for prop in ext_props:
-                    if prop.get("id") == prop_id and prop.get("value") == property_value:
-                        events_to_delete.append(ev)
-                        break
+            # 이미 Graph API가 필터링했으므로, 리턴된 모든 이벤트를 삭제 대상으로 간주합니다.
+            events_to_delete = await self._get_all_pages(url)
 
             if not events_to_delete:
                 logger.info(f"[Graph API] 삭제할 동기화 일정이 없습니다.")
