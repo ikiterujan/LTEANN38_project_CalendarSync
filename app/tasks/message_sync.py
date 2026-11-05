@@ -105,39 +105,43 @@ async def _process_single_channel_messages(channel_id: str, team_id: str):
 
 async def sync_channel_messages_task():
     """[메시지 동기화 태스크] 채널별 독립 세션 기반 asyncio.gather 병렬 처리"""
-    with SessionLocal() as db:
-        try:
-            # 1. ORM 객체 전체 대신 필요 필드만 튜플로 스칼라 쿼리 (메모리 경량화)
+    
+    # 1. 대상 채널 목록만 빠르게 조회하고 세션 즉시 닫기
+    try:
+        with SessionLocal() as db:
             stmt = (
                 select(Channel.channel_id, Channel.team_id)
                 .order_by(Channel.last_synced_at.asc().nullsfirst())
             )
             channels: List[Tuple[str, str]] = db.execute(stmt).all()
-
-            if not channels:
-                logger.info("동기화 대상 채널이 없습니다.")
-                return
-
-            total_channels = len(channels)
-            total_batches = (total_channels + settings.MESSAGE_SYNC_BATCH_SIZE - 1) // settings.MESSAGE_SYNC_BATCH_SIZE
+            # with 블록을 빠져나오며 세션(커넥션)이 DB 풀로 안전하게 반환됨
             
-            for i in range(0, total_channels, settings.MESSAGE_SYNC_BATCH_SIZE):
-                batch = channels[i : i + settings.MESSAGE_SYNC_BATCH_SIZE]
-                current_batch_num = (i // settings.MESSAGE_SYNC_BATCH_SIZE) + 1
-                
-                logger.info(f"[Batch {current_batch_num}/{total_batches}] {len(batch)}개 채널 동기화 중...")
-                
-                # 2. Primitive 값(channel_id, team_id)만 전달하여 병렬 실행
-                tasks = [
-                    _process_single_channel_messages(ch_id, team_id)
-                    for ch_id, team_id in batch
-                ]
-                
-                await asyncio.gather(*tasks, return_exceptions=True)
-                
-                if i + settings.MESSAGE_SYNC_BATCH_SIZE < total_channels:
-                    await asyncio.sleep(settings.BATCH_DELAY_SECONDS)
-            logger.info("메시지 및 일정 동기화 태스크 완료 (병렬 처리)")
+        if not channels:
+            logger.info("동기화 대상 채널이 없습니다.")
+            return
 
-        except Exception as e:
-            logger.error(f"메시지 동기화 태스크 실행 중 에러: {e}", exc_info=True)
+        total_channels = len(channels)
+        total_batches = (total_channels + settings.MESSAGE_SYNC_BATCH_SIZE - 1) // settings.MESSAGE_SYNC_BATCH_SIZE
+        
+        # 2. DB 세션이 "없는" 상태에서 마음 편히 느린 작업(LLM, Graph API, 대기) 수행
+        for i in range(0, total_channels, settings.MESSAGE_SYNC_BATCH_SIZE):
+            batch = channels[i : i + settings.MESSAGE_SYNC_BATCH_SIZE]
+            current_batch_num = (i // settings.MESSAGE_SYNC_BATCH_SIZE) + 1
+            
+            logger.info(f"[Batch {current_batch_num}/{total_batches}] {len(batch)}개 채널 동기화 중...")
+            
+            tasks = [
+                _process_single_channel_messages(ch_id, team_id)
+                for ch_id, team_id in batch
+            ]
+            
+            # 여기서 아무리 오래 걸려도 바깥에는 유지 중인 DB 세션이 없으므로 안전함
+            await asyncio.gather(*tasks, return_exceptions=True)
+            
+            if i + settings.MESSAGE_SYNC_BATCH_SIZE < total_channels:
+                await asyncio.sleep(settings.BATCH_DELAY_SECONDS)
+                
+        logger.info("메시지 및 일정 동기화 태스크 완료 (병렬 처리)")
+
+    except Exception as e:
+        logger.error(f"메시지 동기화 태스크 실행 중 에러: {e}", exc_info=True)
