@@ -17,29 +17,23 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 
 async def get_calculated_lookback_minutes(db: Session, channel_id: str) -> int:
-    # 1. DB에서 채널 정보 조회
     stmt = select(Channel).where(Channel.channel_id == channel_id)
-    result = db.execute(stmt)
-    channel = result.scalars().first()
+    channel = db.execute(stmt).scalars().first()
 
-    # 2. 동기화 이력이 없거나 채널 레코드가 없는 경우 -> 최초 동기화 (Initial Sync)
+    # 1. 최초 동기화인 경우
     if not channel or channel.last_synced_at is None:
-        lookback_days = settings.MESSAGE_SYNC_INITIAL_LOOKBACK_DAYS  # 예: 30일
-        lookback_minutes = lookback_days * 24 * 60
-        '''
-        logger.info(f"🆕 [Initial Sync] 채널 '{channel_id}' 최초 동기화 실행 ({lookback_days}일 치)")
-        '''
-        return lookback_minutes
+        lookback_days = settings.MESSAGE_SYNC_INITIAL_LOOKBACK_DAYS
+        return lookback_days * 24 * 60
 
-    # 3. 기존 동기화 이력이 있는 경우 -> 주기적 동기화 (Periodic Sync)
-    periodic_lookback_minutes = (
-        settings.MESSAGE_SYNC_INTERVAL_HOURS * 60 
-        + settings.MESSAGE_SYNC_LOOKBACK_BUFFER_MINUTES
-    )
-    '''
-    logger.info(f"🔄 [Periodic Sync] 채널 '{channel_id}' 주기적 동기화 실행 ({periodic_lookback_minutes}분)")
-    '''
-    return periodic_lookback_minutes
+    # 2. 다운타임 대응: 실제 현재 시각과 last_synced_at의 차이(분) 계산 + 넉넉한 버퍼(15분)
+    now = now_kst()
+    time_diff = now - channel.last_synced_at
+    calculated_minutes = int(time_diff.total_seconds() / 60) + settings.MESSAGE_SYNC_LOOKBACK_BUFFER_MINUTES
+
+    # 최소 1시간(Periodic 기본값) 보장
+    min_minutes = settings.MESSAGE_SYNC_INTERVAL_HOURS * 60 + settings.MESSAGE_SYNC_LOOKBACK_BUFFER_MINUTES
+    
+    return max(calculated_minutes, min_minutes)
 
 async def _process_single_channel_messages(channel_id: str, team_id: str):
     """
