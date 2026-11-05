@@ -55,8 +55,8 @@ def start_scheduler():
         hours=settings.MESSAGE_SYNC_INTERVAL_HOURS,
         #minutes=4,
         id="message_sync_job",
-        next_run_time=delay_time,   # 서버 구동 즉시 최초 1회 실행
-        #next_run_time=debug_time2,
+        #next_run_time=delay_time,   # 서버 구동 즉시 최초 1회 실행
+        next_run_time=debug_time2,
         replace_existing=True
     )
 
