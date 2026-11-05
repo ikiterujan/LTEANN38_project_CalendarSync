@@ -41,7 +41,7 @@ def start_scheduler():
         sync_user_channels_task,
         "interval",
         #hours=settings.CHANNEL_SYNC_INTERVAL_HOURS,
-        minutes=4,
+        minutes=10,
         id="channel_sync_job",
         #next_run_time=now, # 서버 구동 즉시 최초 1회 실행
         next_run_time=debug_time1,
@@ -53,7 +53,7 @@ def start_scheduler():
         sync_channel_messages_task,
         "interval",
         #hours=settings.MESSAGE_SYNC_INTERVAL_HOURS,
-        minutes=4,
+        minutes=10,
         id="message_sync_job",
         #next_run_time=delay_time,   # 서버 구동 즉시 최초 1회 실행
         next_run_time=debug_time2,
