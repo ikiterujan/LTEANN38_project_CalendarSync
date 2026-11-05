@@ -36,7 +36,7 @@ class LLMService:
     async def _call_gpt_with_retry(self, **kwargs):
         """Semaphore와 Retry가 적용된 GPT 호출 internal 메서드"""
         async with self._semaphore:
-            return await self.client.chat.completions.parse(**kwargs)
+            return await self.client.beta.chat.completions.parse(**kwargs)
 
     def _get_existing_schedules_context(
         self, db: Session, channel_id: str
