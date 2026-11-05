@@ -25,14 +25,21 @@ async def get_calculated_lookback_minutes(db: Session, channel_id: str) -> int:
         lookback_days = settings.MESSAGE_SYNC_INITIAL_LOOKBACK_DAYS
         return lookback_days * 24 * 60
 
-    # 2. 다운타임 대응: 실제 현재 시각과 last_synced_at의 차이(분) 계산 + 넉넉한 버퍼(15분)
+    # 2. 타임존 동기화 처리 (Offset-aware / Naive 변환 방어 로직)
     now = now_kst()
-    time_diff = now - channel.last_synced_at
+    last_synced = channel.last_synced_at
+
+    # DB에서 온 last_synced_at에 tzinfo가 없다면 now의 tzinfo(KST)를 부여
+    if last_synced.tzinfo is None:
+        last_synced = last_synced.replace(tzinfo=now.tzinfo)
+
+    # 3. 시간 차이 계산 (분 단위) + 버퍼 추가
+    time_diff = now - last_synced
     calculated_minutes = int(time_diff.total_seconds() / 60) + settings.MESSAGE_SYNC_LOOKBACK_BUFFER_MINUTES
 
-    # 최소 1시간(Periodic 기본값) 보장
+    # 최소 periodic 기본 인터벌 보장
     min_minutes = settings.MESSAGE_SYNC_INTERVAL_HOURS * 60 + settings.MESSAGE_SYNC_LOOKBACK_BUFFER_MINUTES
-    
+
     return max(calculated_minutes, min_minutes)
 
 async def _process_single_channel_messages(channel_id: str, team_id: str):
