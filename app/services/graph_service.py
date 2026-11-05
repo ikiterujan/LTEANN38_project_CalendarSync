@@ -3,6 +3,7 @@ from typing import Optional, Any, Dict, List
 from datetime import datetime, timezone, timedelta
 import httpx
 import asyncio
+import re
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
@@ -174,7 +175,11 @@ class GraphService:
             
             last_modified = msg.get("lastModifiedDateTime") or msg.get("createdDateTime")
             if last_modified:
-                msg_dt = datetime.fromisoformat(last_modified.replace("Z", "+00:00"))
+                clean_last_modified = re.sub(r'\.\d+', '', last_modified) 
+                # 결과: '2026-03-13T04:22:24.15Z' -> '2026-03-13T04:22:24Z'
+
+                # 2. 파싱을 진행합니다.
+                msg_dt = datetime.fromisoformat(clean_last_modified.replace("Z", "+00:00"))
                 if msg_dt < cutoff:
                     continue
 
