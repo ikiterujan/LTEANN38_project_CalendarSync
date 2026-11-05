@@ -45,31 +45,42 @@ async def get_calculated_lookback_minutes(db: Session, channel_id: str) -> int:
 async def _process_single_channel_messages(channel_id: str, team_id: str):
     """
     단일 채널 메시지 수집 및 RAG C/U/D 파이프라인 실행
-    (독립된 Short-Lived DB Session을 사용하여 Thread/Async Safe 보장)
+    (외부 I/O 호출 구간에서는 DB 세션을 생성하지 않아 커넥션 풀 고갈을 방지)
     """
-    # 병렬 태스크별 독립 세션 생성 (세션 충돌 및 메모리 Stash 완벽 방지)
-    with SessionLocal() as db:
-        try:
+    try:
+        # 1. [DB 세션 1] Lookback 계산용 단발성 조회 후 즉시 세션 닫기
+        with SessionLocal() as db:
             lookback_minutes = await get_calculated_lookback_minutes(db, channel_id)
-            messages: List[Dict[str, Any]] = await graph_service.get_channel_messages(
-                team_id=team_id,
-                channel_id=channel_id,
-                since_minutes=lookback_minutes
-            )
 
-            for msg in messages:
-                content = await sync_service.extract_message_content(msg_payload=msg)
-                if not content:
-                    continue
+        # 2. [외부 Network I/O] Graph API 메시지 수집 (DB 세션 미점유)
+        messages: List[Dict[str, Any]] = await graph_service.get_channel_messages(
+            team_id=team_id,
+            channel_id=channel_id,
+            since_minutes=lookback_minutes
+        )
 
-                # 1. LLM RAG 분석 (내부에서 필드 튜플 조회 및 db.expunge_all 실행됨)
+        if not messages:
+            # 메시지가 없어도 last_synced_at은 갱신
+            with SessionLocal() as db:
+                _update_channel_last_synced(db, channel_id, team_id)
+            return
+
+        # 3. 메시지별 RAG 분석 및 DB 저장
+        for msg in messages:
+            content = await sync_service.extract_message_content(msg_payload=msg)
+            if not content:
+                continue
+
+            # 3-1. [DB 세션 2] LLM RAG 분석용 Context 조회 및 LLM 호출
+            with SessionLocal() as db:
                 rag_result = await llm_service.analyze_message_with_rag(
                     db=db,
                     channel_id=channel_id,
                     message_text=content
                 )
 
-                # 2. MasterCalendar DB 반영 및 Fan-out 실행
+            # 3-2. [DB 세션 3] MasterCalendar 저장 및 Fan-out 실행
+            with SessionLocal() as db:
                 await sync_service.process_rag_actions(
                     db=db,
                     team_id=team_id,
@@ -77,31 +88,30 @@ async def _process_single_channel_messages(channel_id: str, team_id: str):
                     raw_message_id=msg["id"],
                     rag_result=rag_result
                 )
-            # 1. select 구문으로 채널 조회
-            stmt = select(Channel).where(Channel.channel_id == channel_id)
-            channel = db.execute(stmt).scalar_one_or_none()
 
-            if channel:
-                channel.last_synced_at = now_kst()
-            else:
-                # 채널 레코드가 없다면 신규 생성
-                channel = Channel(
-                    id=channel_id,
-                    team_id=team_id,
-                    last_synced_at=now_kst()
-                )
-                db.add(channel)
+        # 4. [DB 세션 4] 최종 동기화 시각 업데이트
+        with SessionLocal() as db:
+            _update_channel_last_synced(db, channel_id, team_id)
 
-            db.commit()  # 최종 커밋
-            '''
-            logger.info(f"✅ 채널 {channel_id} 동기화 완료 및 last_synced_at 업데이트 성공")
-            '''
+    except Exception as e:
+        logger.error(f"Channel {channel_id} 메시지 동기화 에러: {e}", exc_info=True)
 
-        except Exception as e:
-            '''
-            logger.error(f"Channel {channel_id} 메시지 동기화 에러: {e}", exc_info=True)
-            '''
-            logger.error(f"Channel 메시지 동기화 에러: {e}", exc_info=True)
+
+def _update_channel_last_synced(db: Session, channel_id: str, team_id: str):
+    """채널 sync 시간 업데이트 헬퍼 함수"""
+    stmt = select(Channel).where(Channel.channel_id == channel_id)
+    channel = db.execute(stmt).scalar_one_or_none()
+
+    if channel:
+        channel.last_synced_at = now_kst()
+    else:
+        channel = Channel(
+            channel_id=channel_id,
+            team_id=team_id,
+            last_synced_at=now_kst()
+        )
+        db.add(channel)
+    db.commit()
 
 
 async def sync_channel_messages_task():
