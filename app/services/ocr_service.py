@@ -3,6 +3,8 @@ import io
 import logging
 from PIL import Image
 import numpy as np
+import os
+import torch
 
 logger = logging.getLogger(__name__)
 
@@ -15,6 +17,9 @@ class EasyOCRService:
         # 처음 OCR 요청이 들어올 때만 모델을 메모리에 로드 (Lazy Initialization)
         if self._reader is None:
             logger.info("EasyOCR Reader 모델을 초기화합니다...")
+            os.environ["OMP_NUM_THREADS"] = "1"
+            os.environ["MKL_NUM_THREADS"] = "1"
+            torch.set_num_threads(1)
             import easyocr
             self._reader = easyocr.Reader(['ko', 'en'], gpu=False)
         return self._reader
